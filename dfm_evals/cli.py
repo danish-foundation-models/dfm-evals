@@ -370,6 +370,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Include description and tasks in output",
     )
+    subparsers.add_parser(
+        "tournament",
+        help="Tournament commands",
+        add_help=False,
+    )
     tasks_parser = subparsers.add_parser("tasks", help="List registered task names")
     tasks_parser.add_argument(
         "--prefix",
@@ -380,8 +385,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     argv_list = list(argv) if argv is not None else sys.argv[1:]
     args, passthrough_args = parser.parse_known_args(argv_list)
 
-    if len(passthrough_args) > 0 and args.command != "suite":
+    if len(passthrough_args) > 0 and args.command not in ("suite", "tournament"):
         parser.error(f"unrecognized arguments: {' '.join(passthrough_args)}")
+
+    if args.command == "tournament":
+        from dfm_evals.tournament.cli import main as tournament_main
+
+        forwarded = _normalize_remainder_args(passthrough_args)
+        return tournament_main(forwarded)
 
     if args.command == "run":
         return _forward_to_inspect(["eval", *args.args], prog_name="evals")

@@ -17,6 +17,7 @@ uv sync
 uv run evals tasks
 uv run evals run dfm_evals/multi_wiki_qa --model openai/gpt-5-mini
 uv run evals run dfm_evals/bfcl-v1 --model openai/gpt-5-mini
+uv run evals tournament --help
 ```
 
 Suites default to the packaged file at `dfm_evals/eval-sets.yaml`.
@@ -55,3 +56,5 @@ Current task:
 
 - `dfm_evals/tasks/multi_wiki_qa.py`
 - `dfm_evals/tasks/bfcl/`
+
+Tournament modules live under `dfm_evals/tournament/`.
