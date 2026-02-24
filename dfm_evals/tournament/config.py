@@ -50,7 +50,6 @@ class TournamentConfig(BaseModel):
     regenerate_completions: bool = False
     contestant_generate_config: dict[str, JsonValue] = Field(default_factory=dict)
 
-    rating_engine: str = "trueskill"
     rating_params: TrueSkillRatingParams = Field(default_factory=TrueSkillRatingParams)
     conservative_k: float = Field(default=3.0, gt=0.0)
     elo_scale: float = Field(default=173.7178, gt=0.0)
@@ -67,14 +66,12 @@ class TournamentConfig(BaseModel):
 
     judge_model: str = Field(min_length=1)
     judge_max_samples: int = Field(default=8, gt=0)
-    judge_max_concurrency: int = Field(default=64, gt=0)
     judge_generate_config: dict[str, JsonValue] = Field(default_factory=dict)
     judge_prompt_template: str = Field(min_length=1)
     side_swap: bool = True
     prompt_id_field: str = Field(default="prompt_id", min_length=1)
 
     invalid_policy: InvalidPolicy = "skip"
-    bootstrap_matches_per_new_model: int = Field(default=12, gt=0)
 
     model_config = {
         "extra": "forbid",
@@ -82,9 +79,6 @@ class TournamentConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_fields(self) -> Self:
-        if self.rating_engine != "trueskill":
-            raise ValueError("rating_engine must be 'trueskill'")
-
         if self.min_pair_matches > self.max_pair_matches:
             raise ValueError("min_pair_matches cannot exceed max_pair_matches")
 

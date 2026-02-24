@@ -192,8 +192,10 @@ def _stored_config(store: TournamentStore) -> TournamentConfig | None:
         return None
     try:
         return TournamentConfig.model_validate_json(config_json)
-    except Exception:
-        return None
+    except Exception as ex:
+        raise ValueError(
+            "Persisted tournament config in run_state[config_json] is invalid."
+        ) from ex
 
 
 def _normalize_model_names(models: Sequence[str]) -> list[str]:
