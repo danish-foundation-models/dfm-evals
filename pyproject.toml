@@ -12,6 +12,7 @@ authors = [{ name = "Company" }]
 dependencies = [
   "datasets>=2.0",
   "inspect_ai",
+  "pydantic>=2.0",
   "PyYAML>=6.0",
 ]
 
@@ -36,7 +37,10 @@ where = ["."]
 include = ["dfm_evals*"]
 
 [tool.setuptools.package-data]
-dfm_evals = ["eval-sets.yaml"]
+dfm_evals = [
+  "eval-sets.yaml",
+  "tasks/bfcl/translations/exec_simple/*.json",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

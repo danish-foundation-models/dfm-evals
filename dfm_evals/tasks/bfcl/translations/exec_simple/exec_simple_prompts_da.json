@@ -1,0 +1,402 @@
+[
+  {
+    "id": "exec_simple_0",
+    "prompt_da": "Jeg har spillet et spil, hvor det på en eller anden måde er mere sandsynligt end normalt at slå en sekser, og sandsynligheden for, at det sker i et enkelt kast, er 60%. Jeg er nysgerrig: hvis jeg kaster terningen 20 gange, hvad er sandsynligheden for, at jeg får præcis fem seksere?"
+  },
+  {
+    "id": "exec_simple_1",
+    "prompt_da": "Under gårsdagens basketballkamp var en af stjernespillerne brandvarm og forsøgte hele 30 straffekast. Det er generelt kendt, at den gennemsnitlige træfprocent på straffekast ligger omkring 50%. Jeg er nysgerrig: med den sandsynlighed for succes, hvad er chancen for, at spilleren satte præcis 15 af de 30 forsøg?"
+  },
+  {
+    "id": "exec_simple_2",
+    "prompt_da": "Jeg justerer i øjeblikket en machine learning-model, og jeg skal forstå ligheden mellem to objekter i mit datasæt. Deres karakteristika er udtrykt i feature vectors [0.5, 0.7, 0.2, 0.9, 0.1] for det første objekt og [0.4, 0.6, 0.3, 0.8, 0.2] for det andet. Kan du beregne cosine similarity mellem disse to feature vectors for at hjælpe mig med at afgøre, hvor ens disse objekter er?"
+  },
+  {
+    "id": "exec_simple_3",
+    "prompt_da": "Jeg arbejder på et projekt, der indebærer at sammenligne attributterne for forskellige enheder for at afgøre, hvor ens de er. Jeg har to enheder repræsenteret ved numeriske arrays, og jeg skal bruge cosine similarity som mål for lighed mellem dem. Attributterne for den første enhed er [0.3, 0.8, 0.1, 0.6, 0.2], og for den anden enhed er de [0.5, 0.7, 0.4, 0.9, 0.3]. Kan du beregne cosine similarity for disse to vektorer for mig?"
+  },
+  {
+    "id": "exec_simple_4",
+    "prompt_da": "Jeg arbejder på et fysikeksperiment og skal beregne densiteten af et objekt, jeg har. Det vejer 50 kilogram og optager et rumfang på 10 kubikmeter. Kan du hjælpe mig med at finde dets densitet?"
+  },
+  {
+    "id": "exec_simple_5",
+    "prompt_da": "Vi er stødt på dette mærkelige objekt i vores videnskabelige forskning. Det er ret tungt, med en vægt på 120 kilogram, og det optager cirka 30 kubikmeter plads. Kan du hjælpe mig med at beregne dets densitet?"
+  },
+  {
+    "id": "exec_simple_6",
+    "prompt_da": "Under vores avancerede fysikeksperiment har vi fulgt dette unikke objekt, som i starten bevægede sig med 15 m/s. Det har accelereret med en rate på 9.8 m/s², og det har stået på i præcis 10 sekunder. Jeg skal beregne objektets samlede forskydning i denne periode. Kan du hjælpe mig med det?"
+  },
+  {
+    "id": "exec_simple_7",
+    "prompt_da": "Under biljagten med høj hastighed, da føreren accelererede køretøjet, bevægede det sig i starten med 25 meter i sekundet. Med det pludselige tryk på speederen accelererede bilen med 15 meter i sekundet i anden, og dette fortsatte i 8 sekunder. Jeg skal beregne køretøjets forskydning i den tid. Kan du give mig den information?"
+  },
+  {
+    "id": "exec_simple_8",
+    "prompt_da": "Under vores fysikøvelse i laboratoriet eksperimenterer vi med elektriske felter og deres effekt på ladede partikler. Vi har placeret en partikel med en ladning på 5 coulomb i et felt, hvor spændingen er 10 volt. Jeg skal beregne den elektrostatiske potentielle energi i dette scenarie. Kan du regne det ud for mig?"
+  },
+  {
+    "id": "exec_simple_9",
+    "prompt_da": "Jeg arbejder på en fysiksimulation, og jeg har en mikropartikel her med en ladning på 7.8 coulomb. Den er placeret i et elektromagnetisk felt med en spænding på 15.2 volt. Kan du beregne den elektrostatiske potentielle energi for denne partikel i det givne felt?"
+  },
+  {
+    "id": "exec_simple_10",
+    "prompt_da": "Under en træningsøvelse analyserer vi en simulering af en biljagt i høj fart, hvor et køretøj starter fra stilstand og derefter accelererer konstant. Vi har målt accelerationen til 9.8 meter per sekund i anden, og tidsrummet for denne acceleration er 12 sekunder. Jeg skal beregne køretøjets sluthastighed ved slutningen af dette tidsrum. Kan du give mig det tal?"
+  },
+  {
+    "id": "exec_simple_11",
+    "prompt_da": "Jeg har et fysikeksperiment, hvor jeg slipper en bold fra en bestemt højde, og jeg ved, at starthastigheden er nul, fordi jeg lader den falde frit. Tyngdekraften gør hele arbejdet her med 9.8 m/s². Efter 7 sekunder vil jeg beregne, hvad sluthastigheden bliver. Kan vi få det på plads?"
+  },
+  {
+    "id": "exec_simple_12",
+    "prompt_da": "Jeg har sat $5000 i et fast indskud med en årlig rente på 5%, og jeg planlægger at lade det vokse i 10 år. Kan du beregne den fremtidige værdi af denne investering for mig?"
+  },
+  {
+    "id": "exec_simple_13",
+    "prompt_da": "Jeg har $8000, som jeg planlægger at sætte ind på en opsparingskonto med en attraktiv årlig rente på 4%. Jeg rører dem ikke i 15 år. Jeg er nysgerrig efter den fremtidige værdi af denne investering efter den tid. Kan du regne tallene ud for mig?"
+  },
+  {
+    "id": "exec_simple_14",
+    "prompt_da": "Som en del af mit dataanalyseprojekt har jeg fået til opgave at undersøge temperaturtendenserne over den seneste måned. Jeg har indsamlet et sæt daglige temperaturmålinger, som jeg skal fortolke. Datasættet indeholder temperaturer fra 22 til 80 grader Celsius, stigende med 2 hver dag. For at få en bedre forståelse af de overordnede klimamønstre, kan du så beregne gennemsnitstemperaturen for denne periode ved hjælp af disse værdier?"
+  },
+  {
+    "id": "exec_simple_15",
+    "prompt_da": "Jeg arbejder på en rapport om en basketballspillers gennemsnitlige præstation gennem sæsonen. De data, jeg har, inkluderer de point, spilleren scorede i hver kamp: 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155, 160. For at færdiggøre min analyse skal jeg beregne den gennemsnitlige score per kamp. Kan du hjælpe mig med det?"
+  },
+  {
+    "id": "exec_simple_16",
+    "prompt_da": "Jeg udvikler en ny krypteringsalgoritme og fokuserer i øjeblikket på permutationsdelen. Jeg har brug for at vide, hvor mange unikke arrangementer der er mulige, hvis jeg tager 5 tegn fra det standard engelske alfabet, som har 26 bogstaver. Denne beregning er afgørende for at forstå krypteringens kompleksitet. Kan du udføre permutationsberegningen med disse værdier?"
+  },
+  {
+    "id": "exec_simple_17",
+    "prompt_da": "I min nuværende forskning i plantegenetik undersøger jeg den genetiske diversitet inden for en bestemt art. Det er fascinerende arbejde, og jeg har formået at isolere 30 unikke gener. Næste skridt i mit studie er at finde de mulige kombinationer, hvis jeg udvælger 7 af disse gener ad gangen til en mere detaljeret analyse. Kan du beregne antallet af forskellige permutationer for 7 gener ud af i alt 30?"
+  },
+  {
+    "id": "exec_simple_18",
+    "prompt_da": "For bedre at forstå volatiliteten og risikoen forbundet med denne specifikke aktie skal jeg beregne standardafvigelsen af dens daglige lukkekurser over de seneste 10 handelsdage. Her er tallene, jeg har indsamlet: 1000, 2000, 3000, 4000, 5000, 7000, 9000, 15000, 20000, og 30000. Kan du give mig standardafvigelsen for disse lukkekurser?"
+  },
+  {
+    "id": "exec_simple_19",
+    "prompt_da": "Jeg har fulgt en bestemt basketballspillers scoringspræstationer i de seneste 12 kampe for at få indsigt i hans stabilitet. Pointene, han scorede i hver kamp, er som følger: 30, 20, 25, 12, 59, 23, 64, 21, 67, 12, 23, og 43. Jeg skal beregne standardafvigelsen af denne scoring for bedre at forstå variationen og forudsigeligheden i hans præstation. Kan du hjælpe mig med det?"
+  },
+  {
+    "id": "exec_simple_20",
+    "prompt_da": "Jeg arbejder i øjeblikket på et arkitekturprojekt, hvor vi designer en ny trekantet park. Vi er endelig blevet enige om målene, og vi planlægger, at grundlinjen skal være 500 meter lang med en højde på 300 meter. Kan du beregne arealet af denne park for mig?"
+  },
+  {
+    "id": "exec_simple_21",
+    "prompt_da": "Jeg arbejder på designet af en trekantet dæmning, og jeg har fastlagt målene. Grundlinjen bliver 700 meter, og højden bliver 450 meter. Jeg skal beregne det samlede areal, som forsiden af denne dæmning vil dække. Kan du hjælpe mig med at finde ud af, hvad arealet bliver med disse mål?"
+  },
+  {
+    "id": "exec_simple_22",
+    "prompt_da": "Jeg arbejder på en finansiel analyse for en kommende forretningstransaktion, og jeg skal konvertere 5,000 Euro til japanske yen. Kan du give mig det konverterede beløb ved brug af de aktuelle valutakurser?"
+  },
+  {
+    "id": "exec_simple_23",
+    "prompt_da": "Jeg har en kunde, der forbereder sig på en ferie i Storbritannien, og de har afsat et budget på 3000 amerikanske dollars til turen. De har bedt mig om at få et klart billede af, hvor meget de vil have i britiske pund, så de kan planlægge deres udgifter derefter. Kan du konvertere $3000 fra USD til GBP for mig?"
+  },
+  {
+    "id": "exec_simple_24",
+    "prompt_da": "Mens jeg arbejdede på min fysikopgave, har jeg undersøgt bevægelsen af en partikel på en lineær bane. Ligningen f(x) = 3t^2 + 2t + 1 repræsenterer partiklens position over tid. For bedre at forstå partiklens adfærd skal jeg finde dens hastighed præcis ved 5 sekunder. Kan du hjælpe mig med at beregne den afledte af positionsfunktionen for at finde hastigheden på det tidspunkt?"
+  },
+  {
+    "id": "exec_simple_25",
+    "prompt_da": "Jeg arbejder på en finansiel analyse for en virksomhed og prøver at forstå detaljerne i deres omsætningsvækst. Omsætningsfunktionen over tid kan beskrives med en matematisk funktion, specifikt f(x) = 4x^3 + 3x^2 + 2x + 1. Min nuværende opgave er at bestemme, hvor hurtigt virksomhedens omsætning ændrer sig ved 7-års-mærket. Kan du beregne den afledte af omsætningsfunktionen for mig?"
+  },
+  {
+    "id": "exec_simple_26",
+    "prompt_da": "Jeg har udvidet mit slangordforråd, og jeg hører hele tiden ordet \"lit\" dukke op i samtaler. Det er ikke et udtryk, jeg kender, og jeg er nysgerrig på betydningen. Kan du finde ud af, hvad \"lit\" betyder på Urban Dictionary for mig?"
+  },
+  {
+    "id": "exec_simple_27",
+    "prompt_da": "Mens jeg lytter til de nyeste hiphopnumre, har jeg lagt mærke til, at ordet \"flex\" hele tiden dukker op i sangteksterne. Det ser ud til at blive brugt på en måde, der er anderledes end den traditionelle betydning, jeg kender. For at få en bedre forståelse af slangen, kan du slå op, hvad \"flex\" betyder i hiphop-kontekst på Urban Dictionary for mig?"
+  },
+  {
+    "id": "exec_simple_28",
+    "prompt_da": "Jeg planlægger et nyt kunstprojekt - et cirkulært vægmaleri på en af væggene i centrum. Det bliver ret stort, med en radius på 15 fod. For at sikre, at jeg køber nok maling uden at bruge for mange penge, skal jeg finde arealet af denne cirkel. Kan du hjælpe mig med den beregning?"
+  },
+  {
+    "id": "exec_simple_29",
+    "prompt_da": "Jeg arbejder på designet af en kundes cirkulære have, og jeg skal finde ud af, hvor meget rullegræs jeg skal bestille. Havens radius er 20 fod. Kan du beregne arealet for mig?"
+  },
+  {
+    "id": "exec_simple_30",
+    "prompt_da": "Jeg er i gang med at skrive en artikel om COVID-19-situationen med fokus på Brasiliens igangværende indsats og hvordan den påvirker lokalbefolkningen. Præcise data er afgørende for min analyse. Kan du give mig de seneste tal for aktive COVID-19-tilfælde i Brasilien?"
+  },
+  {
+    "id": "exec_simple_31",
+    "prompt_da": "Jeg er i gang med at udarbejde en rapport om COVID-19-status i forskellige lande, og jeg skal inkludere de seneste tal for aktive tilfælde i Spanien. Kan du skaffe mig det opdaterede antal aktive tilfælde for Spanien?"
+  },
+  {
+    "id": "exec_simple_32",
+    "prompt_da": "Jeg er i gang med at udarbejde en rapport om forskellige nøgleaktører i techbranchen, og jeg undersøger oprindelsen og ejerskabet af nogle af de mest handlede aktier. Apples aktie, 'AAPL', har været på min radar, og det er afgørende for min analyse at bekræfte det præcise navn på virksomheden, der handles under dette aktiesymbol. Kan du give mig virksomhedsnavnet for 'AAPL'?"
+  },
+  {
+    "id": "exec_simple_33",
+    "prompt_da": "Jeg udvider min investeringsportefølje og har fulgt nogle techaktier tæt. 'GOOGL' har vist lovende tendenser, og jeg overvejer at investere i den. Jeg vil dog være grundig i min research. Kan du give mig navnet på den virksomhed, som 'GOOGL' repræsenterer?"
+  },
+  {
+    "id": "exec_simple_34",
+    "prompt_da": "Vi har sporet potentielle sikkerhedsbrud, og '192.168.1.1' bliver ved med at dukke op i vores logs. Jeg har brug for at fastslå den geografiske oprindelse af denne IP. Kan du bestemme bredde- og længdegraden for denne adresse?"
+  },
+  {
+    "id": "exec_simple_35",
+    "prompt_da": "Kan du finde bredde- og længdegraden for denne IP-adresse, som jeg er bekymret for? Den er 172.16.254.1. Jeg har overvåget netværket, og denne bliver ved med at dukke op med mærkelig aktivitet."
+  },
+  {
+    "id": "exec_simple_36",
+    "prompt_da": "Jeg har en klient, der planlægger en rejse til Paris, og de går meget op i detaljer. De vil gerne kende den nøjagtige bredde- og længdegrad for byen for at planlægge deres rejseplan præcist. Kan du slå de geografiske koordinater for Paris op for mig?"
+  },
+  {
+    "id": "exec_simple_37",
+    "prompt_da": "Jeg arbejder i øjeblikket på et forskningsprojekt om dyreliv, der indebærer sporing af migrationsmønstre for en fugleart, som er kendt for at passere gennem forskellige byer. Næste fase af mit studie vil fokusere på deres aktivitet omkring Cairo. For at sikre præcisionen af mit sporingsudstyr har jeg brug for de nøjagtige bredde- og længdegradskoordinater for Cairo. Kan du give mig disse oplysninger for Cairo?"
+  },
+  {
+    "id": "exec_simple_38",
+    "prompt_da": "Jeg gennemfører i øjeblikket en undersøgelse af COVID-19's påvirkning, og jeg fokuserer på Brasiliens situation. Jeg har brug for de seneste tal for det samlede antal dødsfald, der tilskrives virussen i Brasilien. Kan du give mig den information?"
+  },
+  {
+    "id": "exec_simple_39",
+    "prompt_da": "Jeg er epidemiolog og følger påvirkningen af COVID-19, og lige nu er jeg fokuseret på situationen i Indien. Jeg har brug for de seneste tal for dødstallet der. Kan du skaffe mig det opdaterede samlede antal dødsfald fra COVID i Indien?"
+  },
+  {
+    "id": "exec_simple_40",
+    "prompt_da": "Jeg arbejder i øjeblikket på et detaljeret bykort, og jeg har to vigtige steder, hvor jeg skal måle afstanden imellem. Det første sted ligger ved koordinaterne (45.76, 4.85), og det andet ligger ved (48.85, 2.35). Kan du hjælpe mig med at finde ud af, hvor langt der er mellem disse to punkter?"
+  },
+  {
+    "id": "exec_simple_41",
+    "prompt_da": "Under mit feltarbejde i skoven har jeg fulgt et bestemt dyrs bevægelsesmønstre tæt. For nylig har jeg noteret to specifikke steder, hvor det er blevet observeret. Det første sted er markeret med koordinaterne (32.71, -117.16), og det andet er ved (34.05, -118.25). For bedre at forstå dets vandreområde skal jeg beregne den afstand, det har tilbagelagt mellem disse to punkter. Kan du hjælpe mig med at bestemme denne afstand ved hjælp af de koordinater, jeg har angivet for de to steder?"
+  },
+  {
+    "id": "exec_simple_42",
+    "prompt_da": "Jeg er dybt inde i min forskning i Fibonacci-sekvensen, og jeg skal analysere de første 20 tal i sekvensen til mit studie. Kan du generere dem for mig?"
+  },
+  {
+    "id": "exec_simple_43",
+    "prompt_da": "Til mit datalogi-projekt skal jeg generere Fibonacci-sekvensen. Mere specifikt kræver opgaven de første 50 tal. Kan du beregne dem for mig?"
+  },
+  {
+    "id": "exec_simple_44",
+    "prompt_da": "Jeg har til opgave at overvåge konkurrenters prissætning, og jeg skal holde øje med en bestemt vare på Amazon. Dens ASIN er 'B08PPDJWC8'. Kan du hente den nyeste pris på dette produkt for mig?"
+  },
+  {
+    "id": "exec_simple_45",
+    "prompt_da": "Jeg administrerer lageret for vores onlinebutik, og det er afgørende at holde styr på vores konkurrenters prissætning, især på Amazon. Vi sælger i øjeblikket et produkt, som også er listet der, og jeg vil sikre mig, at vores priser er konkurrencedygtige. Kan du finde den nyeste pris for produktet med Amazon ASIN 'B08PPDJWC8'?"
+  },
+  {
+    "id": "exec_simple_46",
+    "prompt_da": "Jeg forbereder mig til morgendagens matematiktime om primtalsfaktorisering og skal finde på nogle tydelige eksempler. Kan du nedbryde tallet 4567 i dets primfaktorer for mig? Det vil være en god måde at demonstrere konceptet for eleverne på."
+  },
+  {
+    "id": "exec_simple_47",
+    "prompt_da": "Jeg udvikler en ny krypteringsalgoritme, og jeg fokuserer i øjeblikket på primtalsfaktorisering som en del af processen. For at teste algoritmens effektivitet skal jeg beregne primfaktorerne for tallet 7891. Kan du hjælpe mig med det?"
+  },
+  {
+    "id": "exec_simple_48",
+    "prompt_da": "Jeg arbejder på en produktanmeldelsesartikel, og der er en bestemt vare på Amazon, som jeg fokuserer på. Dens ASIN er 'B08BHXG144'. Jeg skal inkludere den aktuelle pris i min artikel, så kan du hjælpe mig med at finde ud af, hvad den sælges for?"
+  },
+  {
+    "id": "exec_simple_49",
+    "prompt_da": "Mens jeg browsede på Amazon, stødte jeg på et produkt, der fangede min interesse, men jeg fik ikke fat i navnet. ASIN er 'B07ZPKBL9V'. Kan du hjælpe mig med at finde ud af navnet på dette produkt?"
+  },
+  {
+    "id": "exec_simple_50",
+    "prompt_da": "Jeg overvejer at købe et produkt fra Amazon, og før jeg træffer en beslutning, vil jeg gerne tjekke dets vurdering. Produktet har et ASIN på 'B08BHXG144'. Kan du finde den information for mig?"
+  },
+  {
+    "id": "exec_simple_51",
+    "prompt_da": "Jeg overvejer at købe et produkt, jeg fandt på Amazon, men jeg vil sikre mig, at det er godt modtaget af andre, før jeg beslutter mig. Det har ASIN 'B07ZPKBL9V'. Kan du fortælle mig, hvad den aktuelle gennemsnitlige kundevurdering er for denne vare?"
+  },
+  {
+    "id": "exec_simple_52",
+    "prompt_da": "Jeg har fulgt udviklingen i Apples aktie og er interesseret i at dykke dybere ned i dens historik. Jeg vil se de månedlige tendenser og også tjekke, om der for nylig har været nogen splits eller udbytter. Kan du hente historikken for AAPL for mig med et månedligt interval og inkludere information om stock splits og dividends?"
+  },
+  {
+    "id": "exec_simple_53",
+    "prompt_da": "Jeg skal analysere Microsofts aktieudvikling over de seneste måneder uden støjen fra udbytter eller aktiesplit. Kan du hente de ugentlige historiske data for aktiesymbolet 'MSFT' og sikre, at splits og dividends er udeladt i datasættet?"
+  },
+  {
+    "id": "exec_simple_54",
+    "prompt_da": "Jeg skal tjekke den seneste pris på Apple Inc.s aktie. Kan du hente den information for mig?"
+  },
+  {
+    "id": "exec_simple_55",
+    "prompt_da": "Jeg skal tjekke den aktuelle pris på Microsoft Corporations aktie. Kan du hente den nyeste aktiekurs for Microsoft til mig?"
+  },
+  {
+    "id": "exec_simple_56",
+    "prompt_da": "Jeg er i gang med et geografiprojekt, hvor det er afgørende at forstå tidszonerne for forskellige koordinater. Jeg har denne specifikke lokation med længdegrad 123.45 og breddegrad -67.89. Jeg skal bestemme dens tidszone. Kan du hjælpe mig med det?"
+  },
+  {
+    "id": "exec_simple_57",
+    "prompt_da": "Jeg følger et stormsystem til min vejrrapport, og jeg skal give opdateringer baseret på lokal tid der, hvor stormen befinder sig lige nu. Stormen er lige nu på breddegrad 35.22 og længdegrad -80.75. Kan du hjælpe mig med at finde tidszonen for denne lokation?"
+  },
+  {
+    "id": "exec_simple_58",
+    "prompt_da": "Jeg arbejder på et klimastudie med fokus på temperatursvingninger i Arktis og har brug for de nyeste temperaturmålinger for Nordpolen. Kan du hente de aktuelle vejrdata for mig, specifikt ved 90.00 breddegrad og 0.00 længdegrad, ved hjælp af Open-Meteo API?"
+  },
+  {
+    "id": "exec_simple_59",
+    "prompt_da": "Jeg arbejder på et studie om klimaforandringer i Sahara-ørkenen, og en del af min forskning kræver analyse af temperaturdata i realtid fra specifikke lokationer. Jeg skal have adgang til den aktuelle temperatur for et punkt i ørkenen med en breddegrad på 25.00 og en længdegrad på 13.00. Kan vi bruge vores system til hentning af vejrdata til at få denne information fra Open-Meteo API for disse koordinater?"
+  },
+  {
+    "id": "exec_simple_60",
+    "prompt_da": "Under min undersøgelse af et nyligt sikkerhedsbrud har jeg udpeget en mistænkelig IP-adresse, som kan være kilden til angrebet. Adressen er 192.168.1.1. For at indsnævre den potentielle hackers fysiske placering skal jeg finde postnummeret, der er knyttet til denne IP. Kan du give mig den information?"
+  },
+  {
+    "id": "exec_simple_61",
+    "prompt_da": "Jeg sporer noget usædvanlig aktivitet på vores virksomheds netværk, og jeg skal finde kilden. Den pågældende IP er 172.16.254.1. Kan du finde det tilknyttede postnummer for denne IP-adresse?"
+  },
+  {
+    "id": "exec_simple_62",
+    "prompt_da": "Jeg arbejder på noget dataanalyse og skal udføre en matrixmultiplikation som en del af processen. De matricer, jeg har, er: den første er [[1, 2], [3, 4]] og den anden er [[5, 6], [7, 8]]. Kan du hjælpe mig med multiplikationen af disse to matricer?"
+  },
+  {
+    "id": "exec_simple_63",
+    "prompt_da": "Jeg er i øjeblikket dybt inde i en kompleks kvantemekanik-simulering, og en del af processen involverer lidt lineær algebra. Jeg skal multiplicere to matricer for at komme videre med mine beregninger. Den første matrix, jeg har, er [[2, 3], [4, 5]], og den anden er [[6, 7], [8, 9]]. Kan du hjælpe mig med resultatet af at multiplicere disse to matricer?"
+  },
+  {
+    "id": "exec_simple_64",
+    "prompt_da": "Jeg arbejder på et kombinatorikproblem og er nået til et trin, hvor jeg skal beregne fakultetet af 7. Kan du hjælpe mig med at få det resultat?"
+  },
+  {
+    "id": "exec_simple_65",
+    "prompt_da": "Mens jeg fordybede mig i nogle kvantemekanikopgaver til min fysiktime, stødte jeg på en særligt udfordrende ligning. Det viser sig, at jeg skal finde fakultetet af tallet 12 for at komme videre med mine beregninger. Kan du hjælpe mig ved at beregne fakultetet af 12?"
+  },
+  {
+    "id": "exec_simple_66",
+    "prompt_da": "Mens jeg undersøgte de politiske alliancer i det antikke Rom, opdagede jeg, at Senatet i to separate perioder bestod af 450 og derefter 300 medlemmer. For at analysere dataene yderligere skal jeg beregne den største fælles divisor for disse to senatsstørrelser. Kan du hjælpe mig med at finde GCD for disse tal?"
+  },
+  {
+    "id": "exec_simple_67",
+    "prompt_da": "Mens jeg arbejdede på byplanlægningsprojektet, besluttede jeg at bruge et gitterlayout til byens design. Gitteret er baseret på bloknumre med en længde på 360 blokke og en bredde på 240 blokke. For at sikre, at layoutet er så effektivt som muligt, skal jeg finde den største blokstørrelse, der kan bruges ensartet på tværs af begge dimensioner. Kan du beregne den største fælles divisor for disse to tal, 360 og 240, så jeg kan optimere byens blokdesign?"
+  },
+  {
+    "id": "exec_simple_68",
+    "prompt_da": "I studiet, mens jeg arbejder på et nyt track, har jeg disse to trommeloops, som jeg prøver at synkronisere. Det ene loop gentager sig hver 18 beats og det andet hver 24 beats. Jeg skal finde ud af efter hvor mange beats de begge flugter perfekt, så rytmen forbliver konsekvent gennem hele sangen. Kan du beregne det mindste fælles multiplum for disse to tal for mig?"
+  },
+  {
+    "id": "exec_simple_69",
+    "prompt_da": "Jeg arbejder i øjeblikket på et trafiklyssystem til et travlt vejkryds, og vi har to lys, der kører på forskellige timere. Det ene skifter hver 35 sekunder, og det andet hver 45 sekunder. For optimal trafikafvikling skal jeg synkronisere disse lys, så de skifter samtidig. Kan du hjælpe mig med at beregne det mindste fælles multiplum for disse to cyklustider?"
+  },
+  {
+    "id": "exec_simple_70",
+    "prompt_da": "Jeg arbejder i øjeblikket med en klient, der ønsker at købe sit første hjem, og vi prøver at få overblik over budgettet. De har fået øje på et dejligt hus i forstaden til $350,000. For at finansiere købet overvejer de et 30-årigt realkreditlån med en rente på omkring 3.5%. Kan du hjælpe os med at finde ud af, hvad deres månedlige ydelse ville være med disse oplysninger?"
+  },
+  {
+    "id": "exec_simple_71",
+    "prompt_da": "Et par, jeg arbejder med, har fundet deres drømmehjem vurderet til $500,000, og de overvejer deres finansieringsmuligheder. For at hjælpe dem skal jeg beregne deres månedlige realkreditydelser. De overvejer et 25-årigt lån med en rente på 4.5%. Kan du beregne deres månedlige ydelse for et lånebeløb på $500,000 til 4.5% rente over en 25-årig periode?"
+  },
+  {
+    "id": "exec_simple_72",
+    "prompt_da": "Jeg forbereder morgendagens algebraundervisning om andengradsligninger, og jeg vil vise eleverne, hvordan man beregner rødderne ved hjælp af et eksempel. Lad os bruge ligningen 3x^2 + 7x - 10 = 0. Jeg skal finde rødderne for denne, med koefficienterne 3 for a, 7 for b og -10 for c. Kan vi køre dette gennem beregningsprocessen for at få rødderne?"
+  },
+  {
+    "id": "exec_simple_73",
+    "prompt_da": "Jeg arbejder på et program, der skal løse andengradsligninger, og jeg skal teste en funktion, der beregner rødderne. Lige nu skal jeg finde rødderne for ligningen 5x^2 - 8x + 2 = 0. Jeg bruger koefficienterne 5 for a, -8 for b og 2 for c. Kan vi køre dette gennem funktionen for at se, hvad rødderne er?"
+  },
+  {
+    "id": "exec_simple_74",
+    "prompt_da": "Jeg er dybt inde i dette demografiske analyseprojekt, og jeg har en bunke postnumre, jeg skal igennem. Lige nu fokuserer jeg på 90210, og jeg skal matche det med den tilhørende by. Kan du give mig bynavnet for postnummer 90210?"
+  },
+  {
+    "id": "exec_simple_75",
+    "prompt_da": "Jeg arbejder i øjeblikket på et projekt, hvor jeg analyserer mønstre i befolkningsfordelingen i forskellige byer. En del af processen indebærer at matche postnumre med deres tilsvarende byer. Lige nu skal jeg finde ud af, hvilken by postnummeret '10001' tilhører. Kan du give mig navnet på den by, der matcher dette postnummer?"
+  },
+  {
+    "id": "exec_simple_76",
+    "prompt_da": "Jeg arbejder på et projekt om, hvordan helligdage fejres på tværs af forskellige nationer, og hvordan disse fejringer har udviklet sig. Lige nu fokuserer jeg på Frankrig, specifikt året 2010. Jeg har brug for en liste over alle officielle helligdage, der blev observeret i Frankrig i løbet af det år. Kan du hjælpe mig med det?"
+  },
+  {
+    "id": "exec_simple_77",
+    "prompt_da": "Jeg dykker i øjeblikket ned i de kulturelle traditioner på tværs af Europa til en historisk sammenligning med fokus på året 2005. Tyskland, med sin rige historie og mangfoldige fejringer, har fanget min opmærksomhed. Jeg vil gerne vide, hvilke helligdage der blev observeret i Tyskland det år. Kan du give mig en liste over helligdagene i Tyskland i 2005?"
+  },
+  {
+    "id": "exec_simple_78",
+    "prompt_da": "Som dataanalytiker arbejder jeg med et datasæt, der skal sorteres til min analyse. Jeg har disse tal [34, 2, 56, 7, 9, 12], men de skal være i faldende rækkefølge til den rapport, jeg er ved at udarbejde. Kan du sortere dette array for mig?"
+  },
+  {
+    "id": "exec_simple_79",
+    "prompt_da": "Jeg håndterer i øjeblikket et datasæt til mit analyseprojekt og skal organisere tallene i stigende rækkefølge. Datasættet, jeg arbejder med lige nu, er [1, 2, 2, 7, 7, 10]. Kan du sortere dette array for mig?"
+  },
+  {
+    "id": "exec_simple_80",
+    "prompt_da": "Kan du beregne summen af de to binære tal '0011' og '1100' for mig?"
+  },
+  {
+    "id": "exec_simple_81",
+    "prompt_da": "Jeg arbejder på et lille projekt, hvor jeg skal udføre binære beregninger. Kan du hjælpe mig med at lægge de binære tal '10011' og '1100' sammen?"
+  },
+  {
+    "id": "exec_simple_82",
+    "prompt_da": "Jeg har plottet nogle data, og det ser ud til, at der er en lineær trend. Jeg har disse x-koordinater [1, 2, 3] og tilsvarende y-værdier [4, 5, 6]. Jeg skal forudsige y-værdien, når x er 10. Kan du anvende en lineær regression på dette og give mig den forudsagte værdi?"
+  },
+  {
+    "id": "exec_simple_83",
+    "prompt_da": "Jeg arbejder på et dataanalyseprojekt og skal modellere forholdet mellem to variabler. Jeg har et sæt datapunkter med x-koordinater [1, 2, -3] og tilsvarende y-koordinater [4, -5, 6]. Jeg skal opstille en lineær regressionsmodel baseret på disse punkter. Når modellen er på plads, vil jeg gerne forudsige y-værdien, når x er 10. Kan du gøre det for mig?"
+  },
+  {
+    "id": "exec_simple_84",
+    "prompt_da": "Jeg skal identificere den rette linje, der indeholder flest punkter fra et sæt koordinater, jeg har. De koordinater, jeg ser på, er [[1,1], [2,2], [3,4], [5,5]]. Kan du bestemme det maksimale antal punkter, der ligger på en og samme linje i dette datasæt?"
+  },
+  {
+    "id": "exec_simple_85",
+    "prompt_da": "Jeg har arbejdet på en algoritme, der skal identificere den største delmængde af punkter, som ligger på en enkelt ret linje. Jeg har plottet nogle punkter: [[1,1], [2,3], [4,6], [5,5]]. Jeg skal bestemme det maksimale antal punkter fra dette sæt, der falder på den samme linje. Kan du hjælpe mig med det?"
+  },
+  {
+    "id": "exec_simple_86",
+    "prompt_da": "Jeg vil vurdere væksten i min investeringsportefølje. Jeg startede med $10,000 og har tilføjet $1,000 til den hvert år. Der er nu gået fem år, og min portefølje er vokset med en årlig rente på 5%. Jeg ved dog, at inflation kan påvirke den reelle værdi af mine penge, og satserne har været henholdsvis 1%, 2%, 3%, 4% og 4% for hvert af de seneste fem år. Kan du beregne den nuværende værdi af min investering under hensyntagen til inflation?"
+  },
+  {
+    "id": "exec_simple_87",
+    "prompt_da": "Jeg har afsat $1,000,000 som en indledende investering og planlægger at bidrage med $1,000 hvert år. Jeg ser på en tidshorisont på 3 år og forventer et årligt afkast på omkring 10%. Jeg vil dog også tage højde for inflationen i disse år, som jeg forventer bliver henholdsvis 1%, 4% og 4%. Kan du beregne, hvad værdien af min investering vil være ved slutningen af denne periode, når inflationen medregnes?"
+  },
+  {
+    "id": "exec_simple_88",
+    "prompt_da": "Jeg har forsøgt at justere min kost- og fitnessplan, og jeg har virkelig brug for at få styr på mine ernæringsbehov. Jeg er en 30-årig mand, vejer omkring 100 kilogram og er 170 centimeter høj. Jeg er ikke den mest aktive person - mit aktivitetsniveau er ret lavt, omkring 1. Jeg vil gerne tabe mig. Kan du beregne, hvad mit daglige ernæringsindtag bør være?"
+  },
+  {
+    "id": "exec_simple_89",
+    "prompt_da": "Jeg har en 80-årig kvindelig klient, som er 170 cm høj, vejer 59 kg og er ret aktiv med et aktivitetsniveau på 4. Hun ønsker at reducere sin vægt. Kan du beregne hendes daglige ernæringsbehov ud fra disse oplysninger?"
+  },
+  {
+    "id": "exec_simple_90",
+    "prompt_da": "Jeg planlægger en forretningsrejse til New York, og jeg har besluttet at forlænge mit ophold for at nyde byen lidt mere. Jeg vil gerne booke et deluxe-værelse i hele rejseperioden. De datoer, jeg kigger på, er fra 11. august 2024 til 15. august 2024. Jeg har afsat et budget til overnatning, og jeg er villig til at bruge op til $1000 på et komfortabelt ophold. Mit kunde-ID er 123. Kan du gå videre og booke det værelse for mig?"
+  },
+  {
+    "id": "exec_simple_91",
+    "prompt_da": "Jeg vil gerne reservere et king-værelse til en kunde med ID 123. Bookingen er fra 11. december 2023 til 15. august 2024. Prisen, vi kigger på, er $10,000. Der vil ikke blive anvendt rabatkoder på denne reservation. Kan du gennemføre denne booking for mig?"
+  },
+  {
+    "id": "exec_simple_92",
+    "prompt_da": "Jeg arrangerer en lille sammenkomst hjemme hos mig i aften, og jeg vil gerne bestille noget mad til gæsterne. Jeg vil gerne have 10 burgere, som hver koster $5, og også 7 is, hvor hver koster $2. Kan du lægge denne bestilling for mig og fortælle mig, hvad den samlede pris bliver?"
+  },
+  {
+    "id": "exec_simple_93",
+    "prompt_da": "Jeg vil gerne afgive en bestilling på noget mad. Kan du skaffe 101 dumplings til $0.1 stykket, og også 20 rice bowls til $10 pr. skål? Beregn også totalen for mig."
+  },
+  {
+    "id": "exec_simple_94",
+    "prompt_da": "Jeg talte om film med min ven i går aftes, og vi begyndte at snakke om \"Avatar.\" Jeg indså, at jeg ikke kan huske, hvem der instruerede den. Kan du finde instruktørens navn for mig?"
+  },
+  {
+    "id": "exec_simple_95",
+    "prompt_da": "Jeg havde en debat med en ven om ikoniske film, og naturligvis kom \"Pulp Fiction\" op. Vi begyndte at diskutere den unikke instruktørstil, som virkelig definerede filmen, men pinligt nok kunne jeg ikke huske instruktørens navn. Kan du finde ud af, hvem der instruerede \"Pulp Fiction\"?"
+  },
+  {
+    "id": "exec_simple_96",
+    "prompt_da": "Jeg overvejer at vise filmen \"Avatar\" til min families filmaften denne weekend, men jeg er nødt til at sikre mig, at den er passende for alle aldre. Kan du finde aldersvurderingen for \"Avatar\" for mig?"
+  },
+  {
+    "id": "exec_simple_97",
+    "prompt_da": "Kan du finde ud af, hvad aldersvurderingen er for \"Pulp Fiction\"? Jeg prøver at afgøre, om den er egnet for mine teenagebørn at se."
+  },
+  {
+    "id": "exec_simple_98",
+    "prompt_da": "Jeg arbejder med nogle landmålingsdata og skal beregne arealet af en bestemt trekantet grund. Jeg har koordinaterne for trekantens hjørner, som er (1,2), (3,4) og (1,3). Kan du hjælpe mig med at finde arealet af denne trekant ved hjælp af disse punkter?"
+  },
+  {
+    "id": "exec_simple_99",
+    "prompt_da": "Jeg gennemgik grundlæggende geometri og endte med en udfordring om at beregne arealet af en polygon. Polygonen er defineret af disse hjørner: [[1,2],[3,4],[1,4],[3,7]]. Kan du hjælpe mig med at bestemme arealet af denne polygon ved hjælp af shoelace-formlen?"
+  }
+]
