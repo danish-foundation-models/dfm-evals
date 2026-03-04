@@ -40,6 +40,7 @@ include = ["dfm_evals*"]
 dfm_evals = [
   "eval-sets.yaml",
   "tasks/bfcl/translations/exec_simple/*.json",
+  "tasks/piqa/*.json",
 ]
 
 [tool.pytest.ini_options]
