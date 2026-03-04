@@ -376,6 +376,104 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="",
         help="Only show tasks with this registry prefix",
     )
+    eee_parser = subparsers.add_parser(
+        "eee",
+        help="Export Inspect/EuroEval results to every_eval_ever format",
+    )
+    eee_subparsers = eee_parser.add_subparsers(dest="eee_command")
+    eee_subparsers.required = True
+
+    eee_inspect_parser = eee_subparsers.add_parser(
+        "inspect",
+        help="Convert Inspect eval logs (`.eval` or log dir) to every_eval_ever JSON",
+    )
+    eee_inspect_parser.add_argument(
+        "--log-path",
+        required=True,
+        help="Inspect log file (.eval/.json) or directory containing logs",
+    )
+    eee_inspect_parser.add_argument(
+        "--output-dir",
+        default="every_eval_ever",
+        help="Output directory root for converted JSON files",
+    )
+    eee_inspect_parser.add_argument(
+        "--source-organization-name",
+        default="unknown",
+        help="Organization responsible for this evaluation run metadata",
+    )
+    eee_inspect_parser.add_argument(
+        "--evaluator-relationship",
+        choices=["first_party", "third_party", "collaborative", "other"],
+        default="third_party",
+        help="Relationship between evaluator and model provider",
+    )
+    eee_inspect_parser.add_argument(
+        "--source-organization-url",
+        default=None,
+        help="Optional URL for the source organization",
+    )
+    eee_inspect_parser.add_argument(
+        "--source-organization-logo-url",
+        default=None,
+        help="Optional logo URL for the source organization",
+    )
+    eee_inspect_parser.add_argument(
+        "--eval-library-name",
+        default="inspect_ai",
+        help="Evaluation library name to emit in exported metadata",
+    )
+    eee_inspect_parser.add_argument(
+        "--eval-library-version",
+        default=None,
+        help="Optional evaluation library version override",
+    )
+
+    eee_euroeval_parser = eee_subparsers.add_parser(
+        "euroeval",
+        help="Convert EuroEval benchmark JSONL to every_eval_ever JSON",
+    )
+    eee_euroeval_parser.add_argument(
+        "--results-file",
+        required=True,
+        help="Path to `euroeval_benchmark_results.jsonl`",
+    )
+    eee_euroeval_parser.add_argument(
+        "--output-dir",
+        default="every_eval_ever",
+        help="Output directory root for converted JSON files",
+    )
+    eee_euroeval_parser.add_argument(
+        "--source-organization-name",
+        default="unknown",
+        help="Organization responsible for this evaluation run metadata",
+    )
+    eee_euroeval_parser.add_argument(
+        "--evaluator-relationship",
+        choices=["first_party", "third_party", "collaborative", "other"],
+        default="third_party",
+        help="Relationship between evaluator and model provider",
+    )
+    eee_euroeval_parser.add_argument(
+        "--source-organization-url",
+        default=None,
+        help="Optional URL for the source organization",
+    )
+    eee_euroeval_parser.add_argument(
+        "--source-organization-logo-url",
+        default=None,
+        help="Optional logo URL for the source organization",
+    )
+    eee_euroeval_parser.add_argument(
+        "--eval-library-name",
+        default="euroeval",
+        help="Evaluation library name to emit in exported metadata",
+    )
+    eee_euroeval_parser.add_argument(
+        "--eval-library-version",
+        default=None,
+        help="Optional evaluation library version override",
+    )
 
     argv_list = list(argv) if argv is not None else sys.argv[1:]
     args, passthrough_args = parser.parse_known_args(argv_list)
@@ -466,6 +564,43 @@ def main(argv: Sequence[str] | None = None) -> int:
         tasks = _list_registered_tasks(args.prefix)
         for task_name in tasks:
             print(task_name)
+        return 0
+
+    if args.command == "eee":
+        from dfm_evals.eee_export import export_euroeval_results, export_inspect_logs
+
+        try:
+            if args.eee_command == "inspect":
+                written = export_inspect_logs(
+                    log_path=args.log_path,
+                    output_dir=args.output_dir,
+                    source_organization_name=args.source_organization_name,
+                    evaluator_relationship=args.evaluator_relationship,
+                    source_organization_url=args.source_organization_url,
+                    source_organization_logo_url=args.source_organization_logo_url,
+                    eval_library_name=args.eval_library_name,
+                    eval_library_version=args.eval_library_version,
+                )
+            elif args.eee_command == "euroeval":
+                written = export_euroeval_results(
+                    results_file=args.results_file,
+                    output_dir=args.output_dir,
+                    source_organization_name=args.source_organization_name,
+                    evaluator_relationship=args.evaluator_relationship,
+                    source_organization_url=args.source_organization_url,
+                    source_organization_logo_url=args.source_organization_logo_url,
+                    eval_library_name=args.eval_library_name,
+                    eval_library_version=args.eval_library_version,
+                )
+            else:
+                parser.error(f"unsupported eee subcommand: {args.eee_command}")
+        except (FileNotFoundError, RuntimeError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
+
+        for path in written:
+            print(path)
+        print(f"Exported {len(written)} file(s).")
         return 0
 
     parser.print_help()
