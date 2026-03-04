@@ -1,6 +1,8 @@
 # LUMI Toolkit
 
 LUMI-specific helpers for running `dfm-evals` with inspect + vLLM in the LUMI container environment.
+The suite launcher now manages vLLM servers explicitly (target server + optional judge server),
+instead of relying on Inspect self-spawn.
 
 ## Files
 
@@ -10,6 +12,7 @@ LUMI-specific helpers for running `dfm-evals` with inspect + vLLM in the LUMI co
 - `lumi/euroeval_submit.sh`: submit 2-node vLLM + EuroEval jobs.
 - `lumi/run_euroeval.sbatch`: 2-node vLLM MP launcher with optional EuroEval.
 - `lumi/view.sh`: inspect-view helper (default log root: `logs/evals-logs`).
+- `lumi/results_table.sh`: aggregate `.eval` metrics into terminal table/CSV/JSON.
 
 ## Quick Start
 
@@ -31,11 +34,77 @@ EOF
 
 ## Recommended Commands
 
-Inspect smoke (fast validation):
+Inspect smoke (fast validation, externally managed target vLLM):
 
 ```bash
 OVERLAY_DIR=/pfs/lustrep4/scratch/project_465002183/rasmus/vllm-lumi/overlay_vllm_minimal \
 ./lumi/submit.sh --limit 1 --max-connections 2 --run-label inspect_smoke
+```
+
+Throughput-oriented run for small models (example: 4B on 1 node / 8 GPUs):
+
+```bash
+OVERLAY_DIR=/pfs/lustrep4/scratch/project_465002183/rasmus/vllm-lumi/overlay_vllm_minimal \
+./lumi/submit.sh \
+  --model ../../post/outputs/sft-16292768/final \
+  --tp 1 --pp 1 --dp 8 \
+  --max-connections 128 \
+  --limit 100
+```
+
+Inspect with a local LoRA adapter directory (auto-detect adapter, serve base model, enable LoRA):
+
+```bash
+OVERLAY_DIR=/pfs/lustrep4/scratch/project_465002183/rasmus/vllm-lumi/overlay_vllm_minimal \
+./lumi/submit.sh \
+  --model ../../post/outputs/sft-16292768/final \
+  --limit 100
+```
+
+If the adapter directory contains tokenizer artifacts (for example
+`tokenizer_config.json` or `tokenizer.json`), the launch scripts pass that
+directory as `--tokenizer` so vLLM uses the adapter tokenizer.
+
+## Tool Calling Defaults
+
+For suite runs (`lumi/submit.sh`), the target vLLM server now defaults to:
+
+- `--enable-auto-tool-choice`
+- `--tool-call-parser hermes`
+
+This is only a baseline default. Tool-call parser choice is model-dependent and
+must match the model's tool-call output format.
+
+Override per run:
+
+```bash
+./lumi/submit.sh --target-tool-call-parser qwen3
+./lumi/submit.sh --target-disable-auto-tool-choice
+./lumi/submit.sh --target-enable-auto-tool-choice --target-tool-call-parser llama3_json
+```
+
+Judge server controls (when `--judge-server` is used):
+
+```bash
+./lumi/submit.sh --judge-enable-auto-tool-choice --judge-tool-call-parser hermes
+```
+
+For reliable tool calling, your model/template should explicitly handle tool
+schemas and tool-call turns (`tools`, assistant `tool_calls`, and `tool` role
+messages). A plain chat-only template will not be sufficient for robust
+auto-tool-choice behavior.
+
+Run with a dedicated judge replica (separate vLLM server + GPUs):
+
+```bash
+OVERLAY_DIR=/pfs/lustrep4/scratch/project_465002183/rasmus/vllm-lumi/overlay_vllm_minimal \
+./lumi/submit.sh \
+  --model ../../post/outputs/sft-16292768/final \
+  --tp 1 --dp 6 --target-devices 0,1,2,3,4,5 \
+  --judge-model openai/google/gemma-3-4b-pt \
+  --judge-server --judge-server-model google/gemma-3-4b-pt \
+  --judge-dp 2 --judge-devices 6,7 \
+  --limit 100
 ```
 
 EuroEval smoke on smaller model:
@@ -58,10 +127,31 @@ OVERLAY_DIR=/pfs/lustrep4/scratch/project_465002183/rasmus/vllm-lumi/overlay_vll
   --model Qwen/Qwen3.5-397B-A17B \
   --served-model-name Qwen/Qwen3.5-397B-A17B \
   --euroeval-model Qwen/Qwen3.5-397B-A17B \
+  --generative-type reasoning \
   --languages da \
   --iterations 10 \
   --time 12:00:00
 ```
+
+## Throughput Tuning
+
+Choose `TP/PP/DP` and `--max-connections` per run, based on model size and node/GPU count.
+
+- Small models (e.g. ~4B) on 1 node with 8 GPUs:
+  Prefer data parallel fan-out (`TP=1`, `PP=1`, `DP=8`) for best throughput.
+- Larger models that do not fit on one GPU:
+  Increase `TP` (and `PP` when needed), then use remaining GPUs for `DP`.
+- `--max-connections`:
+  Set high enough to keep workers busy (typically `100+` on a full node), but not so high that request queues or memory become unstable.
+
+Practical loop:
+
+1. Start with `TP=1 PP=1 DP=<gpus_per_node>` for small models.
+2. Increase `--max-connections` (e.g. `128`, `256`) while watching latency and error rate.
+3. For large models, first satisfy memory with TP/PP, then allocate leftover GPUs to DP.
+
+When using a separate judge server, reserve GPU slices explicitly with
+`--target-devices` and `--judge-devices` to avoid resource contention.
 
 ## External Judge Example
 
@@ -73,6 +163,8 @@ OVERLAY_DIR=/pfs/lustrep4/scratch/project_465002183/rasmus/vllm-lumi/overlay_vll
 ```
 
 For `openai/*`, `OPENAI_BASE_URL` must be configured (no fallback is used).
+`submit.sh` now defaults judge model to `openai/<target-model-name>` unless
+`--judge-model` is provided explicitly.
 
 ## EuroEval
 
@@ -87,16 +179,29 @@ Common examples:
 ```bash
 ./lumi/euroeval_submit.sh --languages en,da --iterations 1
 ./lumi/euroeval_submit.sh --tasks "knowledge,summarization"
+./lumi/euroeval_submit.sh --generative-type reasoning
 ./lumi/euroeval_submit.sh --time 12:00:00
 ./lumi/euroeval_submit.sh --no-euroeval
 ```
+
+`--generative-type` accepts `auto|base|instruction_tuned|reasoning`.
+When set to `auto` (default), Qwen3/Qwen3.5 models are auto-resolved to
+`reasoning` to avoid short non-reasoning token budgets truncating outputs.
 
 EuroEval artifacts are written under overlay paths from `run_euroeval.sbatch`, by default:
 
 - `/overlay/euroeval-cache-<job_id>`
 - `/overlay/euroeval-runs/<job_id>/euroeval_benchmark_results.jsonl`
+- `/overlay/euroeval-runs/<job_id>/every_eval_ever/` (converted EEE aggregate JSON)
 
 These `/overlay/...` paths are container paths bind-mounted from host `OVERLAY_DIR`.
+
+EEE export is enabled by default in both launchers:
+
+- `DFM_EVALS_EXPORT_EEE=1` in `run_suite.sbatch`
+- `EUROEVAL_EXPORT_EEE=1` in `run_euroeval.sbatch`
+
+Set either to `0` to disable conversion for a run.
 
 ## Inspect View
 
@@ -108,13 +213,29 @@ These `/overlay/...` paths are container paths bind-mounted from host `OVERLAY_D
 
 By default, `view.sh` reads from `logs/evals-logs/`.
 
+## Results Table
+
+```bash
+./lumi/results_table.sh --latest
+./lumi/results_table.sh --run-label external_suite_l100_hc
+./lumi/results_table.sh --compare-models --all-runs
+./lumi/results_table.sh --compare-models --all-runs --task-rows
+./lumi/results_table.sh --run-label external_suite_l100_hc --format csv
+./lumi/results_table.sh --compare-models --all-runs --all-metrics --format csv
+```
+
+`results_table.sh` reads zipped `.eval` files, extracts `header.json`, and prints
+task/scorer/metric aggregates. Use `--compare-models` for model-vs-task tables
+(default orientation: model rows, task columns; use `--task-rows` for the old layout).
+
 ## Log Locations
 
 Default eval artifact roots:
 
 - `logs/evals-runs/<run_label>`
 - `logs/evals-logs/<run_label>`
-- `logs/evals-logs/<run_label>/_vllm_server` (inspect-spawned vLLM raw logs)
+- `logs/evals-logs/<run_label>/_vllm_server` (launcher-managed vLLM raw logs)
+- `logs/evals-runs/<run_label>/every_eval_ever/` (converted EEE JSON + Inspect instance-level JSONL)
 
 Overlay still holds runtime environment assets (`venv`, source checkouts, cache).
 
@@ -135,6 +256,77 @@ Override with:
 - `--slurm-log-dir <path>` on `lumi/submit.sh`
 - `--slurm-log-dir <path>` on `lumi/euroeval_submit.sh`
 - or `SLURM_LOG_DIR=<path>` in the environment
+
+## Overlay vLLM Patches
+
+The runtime overlay sources live in `<OVERLAY_DIR>/src/vllm` and can contain
+local patches that are separate from this `dfm-evals` repo.
+
+Current known patches:
+
+- Upstream cherry-pick:
+  `40f88d831` (`[Bugfix] Fix Qwen3/Qwen3.5 Reasoning Parser (#34779)`), touching:
+  - `vllm/reasoning/qwen3_reasoning_parser.py`
+  - `vllm/entrypoints/openai/chat_completion/serving.py`
+  - `tests/reasoning/test_qwen3_reasoning_parser.py`
+- Local multi-node SHM locality fix:
+  - `vllm/distributed/device_communicators/shm_broadcast.py`
+  - switches same-node detection from rank math to hostname-based process-group detection.
+- Local Qwen3.5 config compatibility fixes:
+  - `vllm/transformers_utils/configs/qwen3_5.py`
+  - `vllm/transformers_utils/configs/qwen3_5_moe.py`
+  - changes `ignore_keys_at_rope_validation` from list to set.
+
+## Overlay EuroEval Patches
+
+EuroEval is installed inside the overlay venv at:
+
+- `<OVERLAY_DIR>/venv/vllm-min/lib/python3.12/site-packages/euroeval`
+
+Current known local patches (against `euroeval==16.15.0` wheel):
+
+- `euroeval/__init__.py`
+  - allows `flash_attn` when `EUROEVAL_ALLOW_FLASH_ATTN=1` (default `1` in this overlay patch),
+    instead of hard-failing import.
+- `euroeval/benchmark_modules/litellm.py`
+  - routes LiteLLM `Router` calls using the cleaned `model_id` consistently
+    (`model_name=model_id`, `model=model_id`) to avoid model-ID mismatch issues.
+
+Inspect patch state:
+
+```bash
+git -C "$OVERLAY_DIR/src/vllm" status --short
+git -C "$OVERLAY_DIR/src/vllm" diff --name-status
+git -C "$OVERLAY_DIR/src/vllm" diff --cached --name-status
+```
+
+Inspect EuroEval wheel drift (files modified from installed RECORD hashes):
+
+```bash
+python - <<'PY'
+import base64, csv, hashlib
+import os
+from pathlib import Path
+overlay_dir = Path(os.environ["OVERLAY_DIR"])
+sp = overlay_dir / "venv/vllm-min/lib/python3.12/site-packages"
+record = sp / "euroeval-16.15.0.dist-info" / "RECORD"
+for path, hashfield, _ in csv.reader(record.read_text().splitlines()):
+    if not hashfield:
+        continue
+    p = sp / path
+    algo, expected = hashfield.split("=", 1)
+    if algo != "sha256" or not p.exists():
+        continue
+    got = base64.urlsafe_b64encode(hashlib.sha256(p.read_bytes()).digest()).rstrip(b"=").decode()
+    if got != expected:
+        print(path)
+PY
+```
+
+If these should be tracked in git, commit them in their owning repos:
+
+- vLLM changes in `$OVERLAY_DIR/src/vllm`
+- EuroEval changes in a EuroEval source checkout (site-packages is not a git repo)
 
 ## Monitoring
 
@@ -163,6 +355,7 @@ EuroEval success checks:
 ```bash
 grep -E 'Server ready|EuroEval complete' logs/slurm/euroeval__*.out
 ls /pfs/lustrep4/scratch/project_465002183/rasmus/vllm-lumi/overlay_vllm_minimal/euroeval-runs/<job_id>/euroeval_benchmark_results.jsonl
+ls /pfs/lustrep4/scratch/project_465002183/rasmus/vllm-lumi/overlay_vllm_minimal/euroeval-runs/<job_id>/every_eval_ever/
 ```
 
 `sacct` may show the `.0` step as cancelled during scripted shutdown while the top-level job is still `COMPLETED`; use the top-level job state/exit code as the source of truth.

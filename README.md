@@ -3,26 +3,36 @@
 Minimal `inspect_ai` companion package with:
 
 - `evals` CLI wrapper (forwarding to `inspect`)
-- local tasks: `dfm_evals/multi_wiki_qa`, `dfm_evals/bfcl-v1`, `dfm_evals/bfcl-v1-da`
+- local tasks: `dfm_evals/multi_wiki_qa`, `dfm_evals/bfcl-v1`, `dfm_evals/bfcl-v1-da`, `dfm_evals/ifeval-da`
 - LUMI operational helpers under `lumi/`
 
 ## LUMI
 
 For container/overlay/sbatch tooling on LUMI, see [`lumi/README.md`](lumi/README.md).
 This includes both `dfm-evals` suite workflows and the dedicated 2-node EuroEval launcher.
+Local overlay vLLM patch state is documented in the `Overlay vLLM Patches`
+section there.
 
 Quick notes:
 
 - Inspect smoke:
   `OVERLAY_DIR=/path/to/overlay_vllm_minimal ./lumi/submit.sh --limit 1 --max-connections 2 --run-label inspect_smoke`
+- Throughput tuning guidance (`TP/PP/DP` + `--max-connections`) is in:
+  `lumi/README.md` under `Throughput Tuning` (e.g. 4B models can run `TP=1 PP=1 DP=8`).
+- `lumi/submit.sh` now launches externally managed vLLM server(s) (target + optional judge)
+  rather than relying on Inspect self-spawn.
 - EuroEval (example: Danish + longer wall time):
-  `OVERLAY_DIR=/path/to/overlay_vllm_minimal ./lumi/euroeval_submit.sh --model Qwen/Qwen3.5-397B-A17B --served-model-name Qwen/Qwen3.5-397B-A17B --euroeval-model Qwen/Qwen3.5-397B-A17B --languages da --iterations 10 --time 12:00:00`
+  `OVERLAY_DIR=/path/to/overlay_vllm_minimal ./lumi/euroeval_submit.sh --model Qwen/Qwen3.5-397B-A17B --served-model-name Qwen/Qwen3.5-397B-A17B --euroeval-model Qwen/Qwen3.5-397B-A17B --generative-type reasoning --languages da --iterations 10 --time 12:00:00`
 - Job logs:
   `logs/slurm/`
 - Inspect eval logs:
   `logs/evals-logs/<run_label>/`
+- Inspect results in Every Eval Ever format:
+  `logs/evals-runs/<run_label>/every_eval_ever/` (`.json` aggregate + `.jsonl` instance-level)
 - EuroEval results:
   `<OVERLAY_DIR>/euroeval-runs/<job_id>/euroeval_benchmark_results.jsonl`
+- EuroEval results in Every Eval Ever format:
+  `<OVERLAY_DIR>/euroeval-runs/<job_id>/every_eval_ever/` (`.json` aggregate)
 - For `openai/*` models, set both:
   `OPENAI_API_KEY` and `OPENAI_BASE_URL`.
 
@@ -38,6 +48,9 @@ uv sync
 uv run evals tasks
 uv run evals run dfm_evals/multi_wiki_qa --model openai/gpt-5-mini
 uv run evals run dfm_evals/bfcl-v1 --model openai/gpt-5-mini
+uv run evals run dfm_evals/ifeval-da --model openai/gpt-5-mini
+uv run evals eee inspect --log-path logs/evals-logs/<run_label> --output-dir out/eee
+uv run evals eee euroeval --results-file /path/to/euroeval_benchmark_results.jsonl --output-dir out/eee
 ```
 
 Suites default to the packaged file at `dfm_evals/eval-sets.yaml`.
@@ -48,6 +61,25 @@ Packaged suites are provider-agnostic.
 uv run evals suite fundamentals \
   --target-model openai/gpt-5-mini \
   --judge-model openai/gpt-5-mini
+```
+
+For external vLLM (recommended), set tool-calling flags on the vLLM server itself:
+
+```bash
+vllm serve ../../post \
+  --served-model-name gemma3-4b-hermes \
+  --enable-auto-tool-choice \
+  --tool-call-parser hermes \
+  --port 8000
+```
+
+Then run the suite against that endpoint (for LUMI launcher flags, see `lumi/README.md`):
+
+```bash
+OPENAI_BASE_URL=http://localhost:8000/v1 OPENAI_API_KEY=EMPTY \
+uv run evals suite fundamentals \
+  --target-model openai/gemma3-4b-hermes \
+  --judge-model openai/gemma3-4b-hermes
 ```
 
 Suites use placeholders in `args`, for example:
