@@ -62,7 +62,7 @@ EUROEVAL_SLURM_LOG_DIR=${EUROEVAL_SLURM_LOG_DIR:-$REPO_ROOT/logs/slurm}
 RANK_LOG_PATH="${EUROEVAL_SLURM_LOG_DIR}/vllm-q35-mp1-rank-%t-${SLURM_JOB_ID_SAFE}.log"
 COMPLETION_FILE="${EUROEVAL_SLURM_LOG_DIR}/completion-qwen35-mp1-${SLURM_JOB_ID_SAFE}.json"
 if [[ -z "$EUROEVAL_EEE_OUTPUT_DIR" ]]; then
-  EUROEVAL_EEE_OUTPUT_DIR="${EUROEVAL_RUN_DIR}/every_eval_ever"
+  EUROEVAL_EEE_OUTPUT_DIR="${REPO_ROOT}/logs/every_eval_ever/data"
 fi
 
 MASTER_ADDR=${MASTER_ADDR:-}
@@ -104,6 +104,52 @@ HEAD_NODE=""
 die() {
   echo "FATAL: $*" >&2
   exit 1
+}
+
+model_label_from_ref() {
+  local model_ref="$1"
+  local ref="$model_ref"
+  local base_name
+  local parent_name
+  local label
+
+  ref="${ref#vllm/}"
+  ref="${ref#openai/}"
+
+  if [[ "$ref" == */* ]]; then
+    base_name="$(basename "$ref")"
+    parent_name="$(basename "$(dirname "$ref")")"
+    case "$base_name" in
+      final|latest|last|checkpoint-*|step-*|epoch-*)
+        if [[ -n "$parent_name" && "$parent_name" != "." && "$parent_name" != "/" ]]; then
+          label="${parent_name}-${base_name}"
+        else
+          label="$base_name"
+        fi
+        ;;
+      *)
+        label="$base_name"
+        ;;
+    esac
+  else
+    label="$ref"
+  fi
+
+  label="${label//[^[:alnum:]._-]/_}"
+  [[ -n "$label" ]] || label="model"
+  echo "$label"
+}
+
+model_developer_from_ref() {
+  local model_ref="$1"
+  local ref="$model_ref"
+  ref="${ref#vllm/}"
+  ref="${ref#openai/}"
+  if [[ "$ref" == */* ]]; then
+    echo "${ref%%/*}"
+  else
+    echo ""
+  fi
 }
 
 case "$EUROEVAL_GENERATIVE_TYPE" in
@@ -174,9 +220,13 @@ PY
   USE_LORA_ADAPTER=1
   VLLM_MODEL_TAG="$LORA_BASE_MODEL"
   VLLM_SERVED_MODEL_NAME="$LORA_BASE_MODEL"
+  LORA_BASE_DEVELOPER="$(model_developer_from_ref "$LORA_BASE_MODEL")"
 
-  if [[ "$SERVED_MODEL_NAME" == "$MODEL" ]]; then
-    LORA_MODULE_NAME="$(basename "$MODEL")"
+  if [[ "$SERVED_MODEL_NAME" == "$MODEL" || -z "$SERVED_MODEL_NAME" ]]; then
+    LORA_MODULE_NAME="$(model_label_from_ref "$MODEL")"
+    if [[ -n "$LORA_BASE_DEVELOPER" ]]; then
+      LORA_MODULE_NAME="${LORA_BASE_DEVELOPER}/${LORA_MODULE_NAME}"
+    fi
   else
     LORA_MODULE_NAME="$SERVED_MODEL_NAME"
   fi
@@ -209,7 +259,7 @@ PY
   fi
 
   # If EUROEVAL_MODEL still points to the adapter path/default served id, map it to the LoRA id.
-  if [[ "$EUROEVAL_MODEL" == "$MODEL" || "$EUROEVAL_MODEL" == "$SERVED_MODEL_NAME" ]]; then
+  if [[ "$EUROEVAL_MODEL" == "$MODEL" || "$EUROEVAL_MODEL" == "$SERVED_MODEL_NAME" || "$EUROEVAL_MODEL" == "$VLLM_SERVED_MODEL_NAME" ]]; then
     EUROEVAL_MODEL="$LORA_MODULE_NAME"
   fi
   STARTUP_CHECK_MODEL="$EUROEVAL_MODEL"
@@ -416,6 +466,7 @@ echo "Rank log path pattern: $RANK_LOG_PATH"
 SING_BIND_ARGS=(
   -B "$BASE_DIR:$LAIFS_APPL_DIR"
   -B "$OVERLAY_DIR:/overlay"
+  -B "$REPO_ROOT:$REPO_ROOT"
 )
 if [[ -d /flash ]]; then
   SING_BIND_ARGS+=(-B /flash:/flash)
@@ -616,6 +667,10 @@ ${EUROEVAL_CMD}"
     printf -v EUROEVAL_EEE_OUTPUT_DIR_Q '%q' "$EUROEVAL_EEE_OUTPUT_DIR"
     printf -v EUROEVAL_EEE_SOURCE_ORGANIZATION_NAME_Q '%q' "$EUROEVAL_EEE_SOURCE_ORGANIZATION_NAME"
     printf -v EUROEVAL_EEE_EVALUATOR_RELATIONSHIP_Q '%q' "$EUROEVAL_EEE_EVALUATOR_RELATIONSHIP"
+    EUROEVAL_EEE_INFERENCE_ARGS=""
+    if [[ -n "${EUROEVAL_API_BASE:-}" ]]; then
+      printf -v EUROEVAL_EEE_INFERENCE_ARGS ' --inference-base-url %q' "$EUROEVAL_API_BASE"
+    fi
 
     EXPORT_EEE_CMD="$(render_env)
 command -v evals >/dev/null 2>&1 || { echo 'FATAL: evals not installed in overlay venv'; exit 1; }
@@ -628,7 +683,7 @@ evals eee euroeval \
   --results-file ${EUROEVAL_RESULTS_FILE_Q} \
   --output-dir ${EUROEVAL_EEE_OUTPUT_DIR_Q} \
   --source-organization-name ${EUROEVAL_EEE_SOURCE_ORGANIZATION_NAME_Q} \
-  --evaluator-relationship ${EUROEVAL_EEE_EVALUATOR_RELATIONSHIP_Q}"
+  --evaluator-relationship ${EUROEVAL_EEE_EVALUATOR_RELATIONSHIP_Q}${EUROEVAL_EEE_INFERENCE_ARGS}"
 
     echo "Exporting EuroEval results to every_eval_ever format..."
     singularity exec --rocm "${SING_BIND_ARGS[@]}" "$SIF" bash -lc "$EXPORT_EEE_CMD"

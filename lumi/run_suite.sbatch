@@ -216,6 +216,18 @@ model_label_from_ref() {
   echo "$label"
 }
 
+model_developer_from_ref() {
+  local model_ref="$1"
+  local ref="$model_ref"
+  ref="${ref#vllm/}"
+  ref="${ref#openai/}"
+  if [[ "$ref" == */* ]]; then
+    echo "${ref%%/*}"
+  else
+    echo ""
+  fi
+}
+
 if [[ "$DFM_EVALS_MODEL" == vllm/* && -d "$MODEL" && -f "$ADAPTER_CONFIG_PATH" && -f "$ADAPTER_WEIGHTS_PATH" ]]; then
   adapter_meta="$(parse_adapter_metadata "$ADAPTER_CONFIG_PATH")" || die "failed to parse adapter metadata from $ADAPTER_CONFIG_PATH"
 
@@ -225,8 +237,24 @@ if [[ "$DFM_EVALS_MODEL" == vllm/* && -d "$MODEL" && -f "$ADAPTER_CONFIG_PATH" &
 
   USE_LORA_ADAPTER=1
 
+  # Preserve a stable LoRA-serving model id for eval metadata/export; do not
+  # collapse it to the base model id.
+  LORA_MODULE_NAME="${DFM_EVALS_MODEL#vllm/}"
+  LORA_BASE_DEVELOPER="$(model_developer_from_ref "$LORA_BASE_MODEL")"
+  if [[ "$LORA_MODULE_NAME" == "$DFM_EVALS_MODEL" || "$LORA_MODULE_NAME" == "$MODEL" || -z "$LORA_MODULE_NAME" ]]; then
+    LORA_MODULE_NAME="$(model_label_from_ref "$MODEL")"
+    if [[ -n "$LORA_BASE_DEVELOPER" ]]; then
+      LORA_MODULE_NAME="${LORA_BASE_DEVELOPER}/${LORA_MODULE_NAME}"
+    fi
+  fi
+  [[ -n "$LORA_MODULE_NAME" ]] || LORA_MODULE_NAME="$LORA_BASE_MODEL"
+  [[ -n "$LORA_MODULE_NAME" ]] || LORA_MODULE_NAME="adapter"
+  if [[ "$LORA_MODULE_NAME" == "$LORA_BASE_MODEL" ]]; then
+    LORA_MODULE_NAME="${LORA_MODULE_NAME}--lora"
+  fi
+
   if [[ "$DFM_EVALS_MODEL" == "vllm/$MODEL" || "$DFM_EVALS_MODEL" == "$MODEL" ]]; then
-    DFM_EVALS_MODEL="vllm/$LORA_BASE_MODEL"
+    DFM_EVALS_MODEL="vllm/$LORA_MODULE_NAME"
   fi
   if [[ "$DFM_EVALS_TARGET_MODEL" == "$ORIG_DFM_EVALS_MODEL" || "$DFM_EVALS_TARGET_MODEL" == "vllm/$MODEL" || "$DFM_EVALS_TARGET_MODEL" == "$MODEL" ]]; then
     DFM_EVALS_TARGET_MODEL="$DFM_EVALS_MODEL"
@@ -234,13 +262,6 @@ if [[ "$DFM_EVALS_MODEL" == vllm/* && -d "$MODEL" && -f "$ADAPTER_CONFIG_PATH" &
   if [[ "$DFM_EVALS_JUDGE_MODEL" == "$ORIG_DFM_EVALS_TARGET_MODEL" || "$DFM_EVALS_JUDGE_MODEL" == "$ORIG_DFM_EVALS_MODEL" || "$DFM_EVALS_JUDGE_MODEL" == "vllm/$MODEL" || "$DFM_EVALS_JUDGE_MODEL" == "$MODEL" ]]; then
     DFM_EVALS_JUDGE_MODEL="$DFM_EVALS_TARGET_MODEL"
   fi
-
-  LORA_MODULE_NAME="${DFM_EVALS_MODEL#vllm/}"
-  if [[ "$LORA_MODULE_NAME" == "$DFM_EVALS_MODEL" ]]; then
-    LORA_MODULE_NAME="$LORA_BASE_MODEL"
-  fi
-  [[ -n "$LORA_MODULE_NAME" ]] || LORA_MODULE_NAME="$LORA_BASE_MODEL"
-  [[ -n "$LORA_MODULE_NAME" ]] || LORA_MODULE_NAME="adapter"
 
   if resolved_adapter_path="$(readlink -f "$MODEL" 2>/dev/null)"; then
     LORA_ADAPTER_PATH="$resolved_adapter_path"
@@ -383,7 +404,7 @@ DFM_EVALS_RUN_DIR=${DFM_EVALS_RUN_DIR:-${DFM_EVALS_RUN_ROOT}/${DFM_EVALS_RUN_LAB
 DFM_EVALS_LOG_DIR=${DFM_EVALS_LOG_DIR:-${DFM_EVALS_LOG_ROOT}/${DFM_EVALS_RUN_LABEL}}
 DFM_EVALS_SERVER_LOG_DIR=${DFM_EVALS_SERVER_LOG_DIR:-${DFM_EVALS_LOG_DIR}/_vllm_server}
 if [[ -z "$DFM_EVALS_EEE_OUTPUT_DIR" ]]; then
-  DFM_EVALS_EEE_OUTPUT_DIR="${DFM_EVALS_RUN_DIR}/every_eval_ever"
+  DFM_EVALS_EEE_OUTPUT_DIR="${REPO_ROOT}/logs/every_eval_ever/data"
 fi
 
 build_evals_cli() {
@@ -782,6 +803,10 @@ if [[ "$DFM_EVALS_EXPORT_EEE" == "1" ]]; then
   printf -v DFM_EVALS_EEE_OUTPUT_DIR_Q '%q' "$DFM_EVALS_EEE_OUTPUT_DIR"
   printf -v DFM_EVALS_EEE_SOURCE_ORGANIZATION_NAME_Q '%q' "$DFM_EVALS_EEE_SOURCE_ORGANIZATION_NAME"
   printf -v DFM_EVALS_EEE_EVALUATOR_RELATIONSHIP_Q '%q' "$DFM_EVALS_EEE_EVALUATOR_RELATIONSHIP"
+  DFM_EVALS_EEE_INFERENCE_ARGS=""
+  if [[ -n "${OPENAI_BASE_URL:-}" ]]; then
+    printf -v DFM_EVALS_EEE_INFERENCE_ARGS ' --inference-base-url %q' "$OPENAI_BASE_URL"
+  fi
 
   EXPORT_EEE_CMD="$(render_env)
 mkdir -p ${DFM_EVALS_EEE_OUTPUT_DIR_Q}
@@ -790,7 +815,7 @@ evals eee inspect \
   --log-path ${DFM_EVALS_LOG_DIR_Q} \
   --output-dir ${DFM_EVALS_EEE_OUTPUT_DIR_Q} \
   --source-organization-name ${DFM_EVALS_EEE_SOURCE_ORGANIZATION_NAME_Q} \
-  --evaluator-relationship ${DFM_EVALS_EEE_EVALUATOR_RELATIONSHIP_Q}"
+  --evaluator-relationship ${DFM_EVALS_EEE_EVALUATOR_RELATIONSHIP_Q}${DFM_EVALS_EEE_INFERENCE_ARGS}"
 
   echo "Exporting Inspect logs to every_eval_ever format..."
   singularity exec --rocm "${SING_BIND_ARGS[@]}" "$SIF" bash -lc "$EXPORT_EEE_CMD"
