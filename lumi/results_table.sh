@@ -1,13 +1,15 @@
 #!/bin/bash
-# Print aggregate task/scorer/metric results from inspect .eval artifacts.
-# Supports model-comparison pivot table across multiple runs.
+# Print aggregate task/scorer/metric results from Every Eval Ever JSON artifacts.
+# Supports model-comparison pivot table across multiple exports.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-EVAL_LOG_ROOT_HOST=${EVAL_LOG_ROOT_HOST:-$REPO_ROOT/logs/evals-logs}
+EEE_DATA_ROOT_HOST=${EEE_DATA_ROOT_HOST:-$REPO_ROOT/logs/every_eval_ever/data}
+LATEST_WINDOW_SECONDS=${LATEST_WINDOW_SECONDS:-120}
+RESULTS_TABLE_WIDTH=${RESULTS_TABLE_WIDTH:-160}
 
 SELECTOR="latest"
 SELECTOR_SET=0
@@ -20,15 +22,16 @@ FORMAT=${FORMAT:-table}
 COMPARE_ORIENTATION=${COMPARE_ORIENTATION:-model-rows}
 
 usage() {
-  cat <<'EOF'
+  cat <<'USAGE'
 Usage:
   ./lumi/results_table.sh [selector options] [view options]
 
 Selector options:
-  --latest             Use latest run dir under eval logs (default)
-  --all-runs           Use all run dirs under eval logs
-  --run-label <label>  Use logs/evals-logs/<label>
-  --log-dir <path>     Use explicit run dir path
+  --latest             Use newest EEE export batch under data root (default)
+  --all-runs           Use all EEE records under data root
+  --run-label <label>  Use legacy logs/evals-runs/<label>/every_eval_ever if present,
+                       otherwise EEE subdir <data_root>/<label> if present
+  --log-dir <path>     Use explicit EEE directory path
 
 View options:
   --compare-models     Pivot table by model (columns are models, rows are tasks)
@@ -40,14 +43,16 @@ View options:
   --help               Show help
 
 Environment overrides:
-  EVAL_LOG_ROOT_HOST   Host eval logs root (default: ./logs/evals-logs)
+  EEE_DATA_ROOT_HOST     Host EEE data root (default: ./logs/every_eval_ever/data)
+  LATEST_WINDOW_SECONDS  Window for --latest selection by file mtime (default: 120)
+  RESULTS_TABLE_WIDTH    Preferred rich table width for --format table (default: 160)
 
 Examples:
   ./lumi/results_table.sh --latest
-  ./lumi/results_table.sh --run-label external_suite_l100_hc
+  ./lumi/results_table.sh --all-runs
   ./lumi/results_table.sh --compare-models --all-runs
   ./lumi/results_table.sh --compare-models --all-runs --all-metrics --format csv
-EOF
+USAGE
 }
 
 die() {
@@ -63,22 +68,21 @@ need_value() {
   fi
 }
 
-run_dir_for_latest() {
-  [[ -d "$EVAL_LOG_ROOT_HOST" ]] || die "eval logs root not found: $EVAL_LOG_ROOT_HOST"
-  local newest
-  newest="$(
-    find "$EVAL_LOG_ROOT_HOST" -mindepth 1 -maxdepth 1 -type d -printf '%T@|%f\n' \
-      | sort -t'|' -k1,1nr \
-      | head -n 1 \
-      | cut -d'|' -f2
-  )"
-  [[ -n "$newest" ]] || die "no run directories found under $EVAL_LOG_ROOT_HOST"
-  printf '%s' "$EVAL_LOG_ROOT_HOST/$newest"
-}
+resolve_run_label_dir() {
+  local label="$1"
+  local legacy="$REPO_ROOT/logs/evals-runs/$label/every_eval_ever"
+  local rooted="$EEE_DATA_ROOT_HOST/$label"
 
-all_run_dirs() {
-  [[ -d "$EVAL_LOG_ROOT_HOST" ]] || die "eval logs root not found: $EVAL_LOG_ROOT_HOST"
-  find "$EVAL_LOG_ROOT_HOST" -mindepth 1 -maxdepth 1 -type d | sort
+  if [[ -d "$legacy" ]]; then
+    printf '%s' "$legacy"
+    return 0
+  fi
+  if [[ -d "$rooted" ]]; then
+    printf '%s' "$rooted"
+    return 0
+  fi
+
+  die "could not resolve run-label '$label' in legacy or EEE data root paths"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -164,34 +168,28 @@ case "$COMPARE_ORIENTATION" in
     ;;
 esac
 
-# In comparison mode, default to all runs unless selector is explicitly set.
 if [[ "$COMPARE_MODELS" == "1" && "$SELECTOR_SET" == "0" ]]; then
   SELECTOR="all-runs"
 fi
 
-RUN_DIRS=()
+SOURCE_DIRS=()
 case "$SELECTOR" in
-  latest)
-    RUN_DIRS+=("$(run_dir_for_latest)")
-    ;;
-  all-runs)
-    while IFS= read -r d; do
-      [[ -n "$d" ]] || continue
-      RUN_DIRS+=("$d")
-    done < <(all_run_dirs)
+  latest|all-runs)
+    [[ -d "$EEE_DATA_ROOT_HOST" ]] || die "EEE data root not found: $EEE_DATA_ROOT_HOST"
+    SOURCE_DIRS+=("$EEE_DATA_ROOT_HOST")
     ;;
   run-label)
     [[ -n "$RUN_LABEL" ]] || die "--run-label requires a value"
-    RUN_DIRS+=("$EVAL_LOG_ROOT_HOST/$RUN_LABEL")
+    SOURCE_DIRS+=("$(resolve_run_label_dir "$RUN_LABEL")")
     ;;
   log-dir)
     [[ -n "$LOG_DIR" ]] || die "--log-dir requires a value"
     if [[ "$LOG_DIR" == /* ]]; then
-      RUN_DIRS+=("$LOG_DIR")
+      SOURCE_DIRS+=("$LOG_DIR")
     elif [[ -d "$LOG_DIR" ]]; then
-      RUN_DIRS+=("$LOG_DIR")
+      SOURCE_DIRS+=("$LOG_DIR")
     else
-      RUN_DIRS+=("$EVAL_LOG_ROOT_HOST/$LOG_DIR")
+      SOURCE_DIRS+=("$EEE_DATA_ROOT_HOST/$LOG_DIR")
     fi
     ;;
   *)
@@ -199,9 +197,9 @@ case "$SELECTOR" in
     ;;
 esac
 
-[[ "${#RUN_DIRS[@]}" -gt 0 ]] || die "no run dirs resolved"
-for d in "${RUN_DIRS[@]}"; do
-  [[ -d "$d" ]] || die "run dir not found: $d"
+[[ "${#SOURCE_DIRS[@]}" -gt 0 ]] || die "no source dirs resolved"
+for d in "${SOURCE_DIRS[@]}"; do
+  [[ -d "$d" ]] || die "source dir not found: $d"
 done
 
 {
@@ -212,28 +210,56 @@ done
     echo "Orientation: $COMPARE_ORIENTATION"
   fi
   echo "Format: $FORMAT"
-  echo "Run dirs:"
-  for d in "${RUN_DIRS[@]}"; do
+  echo "EEE data root: $EEE_DATA_ROOT_HOST"
+  echo "Latest window seconds: $LATEST_WINDOW_SECONDS"
+  echo "Results table width: $RESULTS_TABLE_WIDTH"
+  echo "Source dirs:"
+  for d in "${SOURCE_DIRS[@]}"; do
     echo "  - $d"
   done
 } >&2
 
-RUN_DIRS_NL="$(printf '%s\n' "${RUN_DIRS[@]}")"
+SOURCE_DIRS_NL="$(printf '%s\n' "${SOURCE_DIRS[@]}")"
 
-RUN_DIRS_NL="$RUN_DIRS_NL" FORMAT="$FORMAT" COMPARE_MODELS="$COMPARE_MODELS" PRIMARY_ONLY="$PRIMARY_ONLY" COMPARE_ORIENTATION="$COMPARE_ORIENTATION" python3 - <<'PY'
+SOURCE_DIRS_NL="$SOURCE_DIRS_NL" \
+FORMAT="$FORMAT" \
+COMPARE_MODELS="$COMPARE_MODELS" \
+PRIMARY_ONLY="$PRIMARY_ONLY" \
+COMPARE_ORIENTATION="$COMPARE_ORIENTATION" \
+SELECTOR="$SELECTOR" \
+LATEST_WINDOW_SECONDS="$LATEST_WINDOW_SECONDS" \
+RESULTS_TABLE_WIDTH="$RESULTS_TABLE_WIDTH" \
+python3 - <<'PY'
 import csv
 import glob
 import json
 import os
-import re
-import zipfile
 from datetime import datetime
 
-run_dirs = [d for d in os.environ["RUN_DIRS_NL"].splitlines() if d]
+try:
+    from rich import box
+    from rich.console import Console
+    from rich.table import Table
+
+    HAVE_RICH = True
+    try:
+        rich_width = int(os.environ.get("RESULTS_TABLE_WIDTH", "160"))
+    except Exception:
+        rich_width = 160
+    if rich_width < 80:
+        rich_width = 80
+    RICH_CONSOLE = Console(highlight=False, width=rich_width)
+except Exception:
+    HAVE_RICH = False
+    RICH_CONSOLE = None
+
+source_dirs = [d for d in os.environ["SOURCE_DIRS_NL"].splitlines() if d]
 fmt = os.environ["FORMAT"]
 compare_models = os.environ["COMPARE_MODELS"] == "1"
 primary_only = os.environ["PRIMARY_ONLY"] == "1"
 orientation = os.environ["COMPARE_ORIENTATION"]
+selector = os.environ["SELECTOR"]
+latest_window_seconds = float(os.environ["LATEST_WINDOW_SECONDS"])
 
 preferred_metrics = [
     "accuracy",
@@ -247,32 +273,78 @@ preferred_metrics = [
 preferred_rank = {name: idx for idx, name in enumerate(preferred_metrics)}
 
 
-def model_from_run_label(run_label: str) -> str | None:
-    label = (run_label or "").strip()
-    if not label:
-        return None
+def emit_string_table(columns, rows, *, title=None):
+    # columns: list of (key, header, cap, align)
+    if HAVE_RICH:
+        table = Table(
+            title=title,
+            box=box.SIMPLE_HEAVY,
+            show_header=True,
+            show_edge=True,
+            header_style="bold bright_white",
+            row_styles=["none", "dim"],
+            pad_edge=True,
+            expand=False,
+        )
+        for _key, header, cap, align in columns:
+            justify = "right" if align == "right" else "left"
+            max_width = cap if isinstance(cap, int) and cap > 0 else None
+            table.add_column(
+                str(header),
+                justify=justify,
+                max_width=max_width,
+                overflow="ellipsis",
+            )
 
-    # Default run labels often end with "__job-<id>"; drop that suffix so
-    # reruns aggregate under the same model key.
-    label = re.sub(r"__job-\d+$", "", label)
+        for row in rows:
+            table.add_row(*(str(row.get(key, "-")) for key, _h, _c, _a in columns))
 
-    # Convention: "<suite>__<model-like-label>".
-    if "__" in label:
-        _suite, _sep, rest = label.partition("__")
-        rest = rest.strip()
-        if rest:
-            return rest
-    return label
+        RICH_CONSOLE.print(table)
+        return
+
+    widths = {}
+    for key, title_text, cap, _align in columns:
+        max_len = len(str(title_text))
+        for row in rows:
+            max_len = max(max_len, len(str(row.get(key, "-"))))
+        widths[key] = min(max_len, cap)
+
+    header = " ".join(trim(str(title_text), widths[key]).ljust(widths[key]) for key, title_text, _cap, _align in columns)
+    print(header)
+    print("-" * len(header))
+    for row in rows:
+        parts = []
+        for key, _title, _cap, align in columns:
+            cell = trim(str(row.get(key, "-")), widths[key])
+            if align == "right":
+                parts.append(cell.rjust(widths[key]))
+            else:
+                parts.append(cell.ljust(widths[key]))
+        print(" ".join(parts))
 
 
-def parse_ts(value: str | None) -> float:
-    if not value:
+def parse_ts(value):
+    if value is None:
         return 0.0
-    try:
-        text = value.replace("Z", "+00:00")
-        return datetime.fromisoformat(text).timestamp()
-    except Exception:
-        return 0.0
+    if isinstance(value, (int, float)):
+        try:
+            return float(value)
+        except Exception:
+            return 0.0
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return 0.0
+        try:
+            return float(text)
+        except Exception:
+            pass
+        try:
+            text = text.replace("Z", "+00:00")
+            return datetime.fromisoformat(text).timestamp()
+        except Exception:
+            return 0.0
+    return 0.0
 
 
 def value_text(value):
@@ -291,92 +363,132 @@ def trim(text: str, width: int) -> str:
     return text[: width - 1] + "~"
 
 
+def row_from_eval_result(record, eval_result, path, file_ts):
+    evaluation_id = record.get("evaluation_id") or "-"
+    source_metadata = record.get("source_metadata") or {}
+    model_info = record.get("model_info") or {}
+    score_details = eval_result.get("score_details") or {}
+    details = score_details.get("details") or {}
+    metric_config = eval_result.get("metric_config") or {}
+    uncertainty = score_details.get("uncertainty") or {}
+
+    evaluation_name = str(eval_result.get("evaluation_name") or "")
+    parts = [p for p in evaluation_name.split("/") if p]
+
+    task = details.get("task")
+    scorer = details.get("scorer")
+    metric = details.get("metric")
+
+    if not task:
+        task = parts[0] if parts else "<unknown>"
+
+    if not scorer:
+        scorer = parts[-2] if len(parts) >= 3 else "-"
+
+    if not metric:
+        if len(parts) >= 1:
+            metric = parts[-1]
+        else:
+            metric = metric_config.get("evaluation_description") or "-"
+
+    ts = (
+        parse_ts(eval_result.get("evaluation_timestamp"))
+        or parse_ts(record.get("evaluation_timestamp"))
+        or parse_ts(record.get("retrieved_timestamp"))
+        or file_ts
+    )
+
+    n = uncertainty.get("num_samples")
+    total = n
+    run = source_metadata.get("source_name") or (parts[0] if parts else "-")
+
+    model = model_info.get("id") or model_info.get("name") or "-"
+    reported_model = model_info.get("name") or model
+
+    return {
+        "run": run,
+        "path": path,
+        "ts": ts,
+        "task": task,
+        "scorer": scorer,
+        "metric": metric,
+        "value": score_details.get("score"),
+        "n": n,
+        "total": total,
+        "model": model,
+        "reported_model": reported_model,
+        "evaluation_id": evaluation_id,
+    }
+
+
+files = []
+for source_dir in source_dirs:
+    pattern = os.path.join(source_dir, "**", "*.json")
+    for path in glob.glob(pattern, recursive=True):
+        base = os.path.basename(path)
+        if base.startswith("_"):
+            continue
+        files.append(os.path.normpath(path))
+
+files = sorted(set(files))
+if not files:
+    print("No readable EEE .json files found.")
+    raise SystemExit(0)
+
+file_stats = []
+for path in files:
+    try:
+        file_stats.append((os.path.getmtime(path), path))
+    except Exception:
+        continue
+
+if not file_stats:
+    print("No readable EEE .json files found.")
+    raise SystemExit(0)
+
+if selector == "latest":
+    newest_mtime = max(ts for ts, _ in file_stats)
+    threshold = newest_mtime - latest_window_seconds
+    selected = [path for ts, path in file_stats if ts >= threshold]
+    selected_set = set(selected)
+    file_stats = [(ts, path) for ts, path in file_stats if path in selected_set]
+
 rows = []
-for run_dir in run_dirs:
-    run_label = os.path.basename(os.path.normpath(run_dir))
-    for path in sorted(glob.glob(os.path.join(run_dir, "*.eval"))):
-        try:
-            with zipfile.ZipFile(path) as zf:
-                header = json.loads(zf.read("header.json"))
-        except Exception:
-            continue
+for file_ts, path in sorted(file_stats, key=lambda x: x[1]):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            record = json.load(f)
+    except Exception:
+        continue
 
-        eval_obj = header.get("eval") or {}
-        results = header.get("results") or {}
-        stats = header.get("stats") or {}
+    eval_results = record.get("evaluation_results") or []
+    if not eval_results:
+        model_info = record.get("model_info") or {}
+        rows.append(
+            {
+                "run": (record.get("source_metadata") or {}).get("source_name") or "-",
+                "path": path,
+                "ts": parse_ts(record.get("evaluation_timestamp"))
+                or parse_ts(record.get("retrieved_timestamp"))
+                or file_ts,
+                "task": "<unknown>",
+                "scorer": "-",
+                "metric": "-",
+                "value": None,
+                "n": None,
+                "total": None,
+                "model": model_info.get("id") or model_info.get("name") or "-",
+                "reported_model": model_info.get("name") or "-",
+                "evaluation_id": record.get("evaluation_id") or "-",
+            }
+        )
+        continue
 
-        task = (eval_obj.get("task") or "").split("/")[-1] or "<unknown>"
-        reported_model = eval_obj.get("model") or "-"
-        model = model_from_run_label(run_label) or reported_model
-        completed = results.get("completed_samples")
-        total = results.get("total_samples")
-        created = eval_obj.get("created") or stats.get("completed_at") or stats.get("started_at")
-        ts = parse_ts(created)
-        if ts <= 0:
-            try:
-                ts = os.path.getmtime(path)
-            except Exception:
-                ts = 0.0
-
-        scores = results.get("scores") or []
-        if not scores:
-            rows.append(
-                {
-                    "run": run_label,
-                    "path": path,
-                    "ts": ts,
-                    "task": task,
-                    "scorer": "-",
-                    "metric": "-",
-                    "value": None,
-                    "n": completed,
-                    "total": total,
-                    "model": model,
-                    "reported_model": reported_model,
-                }
-            )
-            continue
-
-        for score in scores:
-            scorer = score.get("scorer") or score.get("name") or "-"
-            metrics = score.get("metrics") or {}
-            if not metrics:
-                rows.append(
-                    {
-                        "run": run_label,
-                        "path": path,
-                        "ts": ts,
-                        "task": task,
-                        "scorer": scorer,
-                        "metric": "-",
-                        "value": None,
-                        "n": completed,
-                        "total": total,
-                        "model": model,
-                        "reported_model": reported_model,
-                    }
-                )
-                continue
-            for metric_name, metric in metrics.items():
-                value = metric.get("value") if isinstance(metric, dict) else None
-                rows.append(
-                    {
-                        "run": run_label,
-                        "path": path,
-                        "ts": ts,
-                        "task": task,
-                        "scorer": scorer,
-                        "metric": metric_name,
-                        "value": value,
-                        "n": completed,
-                        "total": total,
-                        "model": model,
-                        "reported_model": reported_model,
-                    }
-                )
+    for eval_result in eval_results:
+        rows.append(row_from_eval_result(record, eval_result, path, file_ts))
 
 if not rows:
-    print("No readable .eval files found.")
+    print("No rows parsed from EEE records.")
     raise SystemExit(0)
 
 if not compare_models:
@@ -393,46 +505,33 @@ if not compare_models:
         raise SystemExit(0)
 
     columns = [
-        ("run", "run", 24, "left"),
-        ("task", "task", 22, "left"),
-        ("scorer", "scorer", 16, "left"),
-        ("metric", "metric", 20, "left"),
-        ("value", "value", 10, "right"),
-        ("n", "n", 6, "right"),
-        ("total", "total", 6, "right"),
-        ("model", "model", 28, "left"),
+        ("run", "Run", 24, "left"),
+        ("task", "Task", 24, "left"),
+        ("scorer", "Scorer", 20, "left"),
+        ("metric", "Metric", 24, "left"),
+        ("value", "Value", 10, "right"),
+        ("n", "N", 8, "right"),
+        ("total", "Total", 8, "right"),
+        ("model", "Model", 56, "left"),
     ]
-    widths = {}
-    for key, title, cap, _align in columns:
-        max_len = len(title)
-        for row in rows:
-            if key == "value":
-                cell = value_text(row.get(key))
-            else:
-                cell = str(row.get(key) if row.get(key) is not None else "-")
-            max_len = max(max_len, len(cell))
-        widths[key] = min(max_len, cap)
-
-    header = " ".join(title.ljust(widths[key]) for key, title, _cap, _align in columns)
-    print(header)
-    print("-" * len(header))
+    display_rows = []
     for row in rows:
-        parts = []
-        for key, _title, _cap, align in columns:
-            if key == "value":
-                cell = value_text(row.get(key))
-            else:
-                cell = str(row.get(key) if row.get(key) is not None else "-")
-            cell = trim(cell, widths[key])
-            if align == "right":
-                parts.append(cell.rjust(widths[key]))
-            else:
-                parts.append(cell.ljust(widths[key]))
-        print(" ".join(parts))
+        display_rows.append(
+            {
+                "run": row.get("run", "-"),
+                "task": row.get("task", "-"),
+                "scorer": row.get("scorer", "-"),
+                "metric": row.get("metric", "-"),
+                "value": value_text(row.get("value")),
+                "n": row.get("n", "-"),
+                "total": row.get("total", "-"),
+                "model": row.get("model", "-"),
+            }
+        )
+    emit_string_table(columns, display_rows, title=f"EEE Results ({len(display_rows)} rows)")
     raise SystemExit(0)
 
 # compare_models path
-# Keep latest result for each model+task+scorer+metric across included runs.
 latest = {}
 for row in rows:
     key = (row["model"], row["task"], row["scorer"], row["metric"])
@@ -521,35 +620,32 @@ if orientation == "task-rows":
             writer.writerow(out)
         raise SystemExit(0)
 
-    columns = [("task", "task", 22, "left"), ("metric", "metric", 18, "left"), ("scorer", "scorer", 16, "left")]
+    columns = [
+        ("task", "Task", 24, "left"),
+        ("metric", "Metric", 20, "left"),
+        ("scorer", "Scorer", 20, "left"),
+    ]
     model_labels = unique_model_labels(models)
     for model in models:
-        columns.append((model, model_labels[model], 24, "right"))
+        columns.append((model, model_labels[model], 28, "right"))
 
-    widths = {}
-    for key, title, cap, _align in columns:
-        max_len = len(title)
-        for row in table_rows:
-            cell = value_text(row.get(key)) if key in models else str(row.get(key, "-"))
-            max_len = max(max_len, len(cell))
-        widths[key] = min(max_len, cap)
-
-    header = " ".join(trim(title, widths[key]).ljust(widths[key]) for key, title, _cap, _align in columns)
-    print(header)
-    print("-" * len(header))
+    display_rows = []
     for row in table_rows:
-        parts = []
-        for key, _title, _cap, align in columns:
-            if key in models:
-                cell = value_text(row.get(key))
-            else:
-                cell = str(row.get(key, "-"))
-            cell = trim(cell, widths[key])
-            if align == "right":
-                parts.append(cell.rjust(widths[key]))
-            else:
-                parts.append(cell.ljust(widths[key]))
-        print(" ".join(parts))
+        out = {
+            "task": row.get("task", "-"),
+            "metric": row.get("metric", "-"),
+            "scorer": row.get("scorer", "-"),
+        }
+        for model in models:
+            out[model] = value_text(row.get(model))
+        display_rows.append(out)
+
+    metric_mode = "primary" if primary_only else "all"
+    emit_string_table(
+        columns,
+        display_rows,
+        title=f"Model Comparison (task rows, {metric_mode} metrics)",
+    )
     raise SystemExit(0)
 
 # model-rows orientation
@@ -588,35 +684,21 @@ if fmt == "csv":
     raise SystemExit(0)
 
 model_labels = unique_model_labels(models)
-columns = [("model", "model", 24, "left")]
+columns = [("model", "Model", 56, "left")]
 for col_key, base, _source_row in col_defs:
-    columns.append((col_key, base, 18, "right"))
+    columns.append((col_key, base, 20, "right"))
 
-widths = {}
-for key, title, cap, _align in columns:
-    max_len = len(title)
-    for row in model_rows:
-        if key == "model":
-            cell = model_labels.get(row.get(key, "-"), row.get(key, "-"))
-        else:
-            cell = value_text(row.get(key))
-        max_len = max(max_len, len(str(cell)))
-    widths[key] = min(max_len, cap)
-
-header = " ".join(trim(title, widths[key]).ljust(widths[key]) for key, title, _cap, _align in columns)
-print(header)
-print("-" * len(header))
+display_rows = []
 for row in model_rows:
-    parts = []
-    for key, _title, _cap, align in columns:
-        if key == "model":
-            cell = model_labels.get(row.get(key, "-"), row.get(key, "-"))
-        else:
-            cell = value_text(row.get(key))
-        cell = trim(str(cell), widths[key])
-        if align == "right":
-            parts.append(cell.rjust(widths[key]))
-        else:
-            parts.append(cell.ljust(widths[key]))
-    print(" ".join(parts))
+    out = {"model": model_labels.get(row.get("model", "-"), row.get("model", "-"))}
+    for col_key, _base, _source_row in col_defs:
+        out[col_key] = value_text(row.get(col_key))
+    display_rows.append(out)
+
+metric_mode = "primary" if primary_only else "all"
+emit_string_table(
+    columns,
+    display_rows,
+    title=f"Model Comparison (model rows, {metric_mode} metrics)",
+)
 PY
