@@ -55,6 +55,7 @@ uv run evals eee inspect --log-path logs/evals-logs/<run_label> --output-dir out
 uv run evals eee euroeval --results-file /path/to/euroeval_benchmark_results.jsonl --output-dir out/eee/data
 # Optional: record inference endpoint/provider context
 uv run evals eee inspect --log-path logs/evals-logs/<run_label> --output-dir out/eee/data --inference-base-url https://inference.example/v1 --inference-provider-name my-provider
+uv run evals tournament --help
 ```
 
 Prime Sandbox provider (Inspect `--sandbox prime`):
@@ -186,3 +187,5 @@ Current task:
 
 - `dfm_evals/tasks/multi_wiki_qa.py`
 - `dfm_evals/tasks/bfcl/`
+
+Tournament modules live under `dfm_evals/tournament/`.

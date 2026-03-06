@@ -6,6 +6,7 @@ from .hf_eval_yaml import install_hf_eval_yaml_extensions
 from .sandboxes import modal, prime
 from .scorers import comet, gleu
 from .tasks import bfcl, bfcl_da, ifeval_da, multi_wiki_qa, piqa
+from .tournament.scorer import decision_valid_rate, pairwise_judge
 
 __all__ = [
     "multi_wiki_qa",
@@ -17,6 +18,8 @@ __all__ = [
     "comet",
     "prime",
     "modal",
+    "pairwise_judge",
+    "decision_valid_rate",
 ]
 
 
