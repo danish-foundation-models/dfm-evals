@@ -31,13 +31,6 @@ sets:
     description: Broad inspect_evals fundamentals set
     tasks:
       - inspect_evals/gsm8k
-      - name: inspect_evals/mask
-        args:
-          - -T
-          - binary_judge_model={{judge_model}}
-          - -T
-          - numeric_judge_model={{judge_model}}
-      - inspect_evals/musr
       - inspect_evals/ifeval
       - dfm_evals/ifeval-da
       - inspect_evals/truthfulqa
