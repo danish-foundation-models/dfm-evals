@@ -138,7 +138,7 @@ def add_models(
     max_batches: int | None = None,
 ) -> AddModelsResult:
     """Add models to an existing tournament and continue the run loop."""
-    requested_models, _parsed, updated_config, already_present, _new_models = _register_models(
+    requested_models, _parsed, updated_config, already_present, new_models = _register_models(
         config_or_state,
         models=models,
     )
@@ -146,6 +146,22 @@ def add_models(
     with TournamentStore(state_dir) as store:
         store.initialize_from_config(updated_config)
         _set_run_state_defaults(store, updated_config)
+
+        if len(new_models) == 0:
+            status = _status_from_store(updated_config, store)
+            return AddModelsResult(
+                requested_models=requested_models,
+                added_models=[],
+                already_present_models=already_present,
+                generated_models=[],
+                run=TournamentRunResult(
+                    batches_completed=0,
+                    matches_scheduled=0,
+                    outcomes_processed=0,
+                    outcomes_skipped=0,
+                    status=status,
+                ),
+            )
 
         coverage_before = index_generation_responses(updated_config, store=store)
         generated_models = sorted(
@@ -179,8 +195,11 @@ def register_models(
     with TournamentStore(state_dir) as store:
         store.initialize_from_config(updated_config)
         _set_run_state_defaults(store, updated_config)
-        index_generation_responses(updated_config, store=store)
         status = _status_from_store(updated_config, store)
+
+        if len(new_models) > 0:
+            index_generation_responses(updated_config, store=store)
+            status = _status_from_store(updated_config, store)
 
     return RegisterModelsResult(
         requested_models=requested_models,
@@ -291,12 +310,13 @@ def _register_models(
         )
         store.initialize_from_config(updated_config)
 
-        with store.transaction():
-            run_state.set_config_json(store, updated_config.model_dump_json(), commit=False)
-            run_state.set_run_status(store, RUN_STATUS_RUNNING, commit=False)
-            run_state.set_stable_batches(store, 0, commit=False)
-            run_state.set_converged(store, False, commit=False)
-            run_state.set_stop_reasons(store, [], commit=False)
+        if len(new_models) > 0:
+            with store.transaction():
+                run_state.set_config_json(store, updated_config.model_dump_json(), commit=False)
+                run_state.set_run_status(store, RUN_STATUS_RUNNING, commit=False)
+                run_state.set_stable_batches(store, 0, commit=False)
+                run_state.set_converged(store, False, commit=False)
+                run_state.set_stop_reasons(store, [], commit=False)
 
     return requested_models, parsed, updated_config, already_present, new_models
 
