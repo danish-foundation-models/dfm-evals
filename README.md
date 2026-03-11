@@ -1,86 +1,148 @@
 # dfm-evals
 
-Minimal `inspect_ai` companion package with:
+`dfm-evals` is a small eval toolkit for `inspect_ai` and EuroEval workflows:
 
-- `evals` CLI wrapper (forwarding to `inspect`)
-- local tasks: `dfm_evals/multi_wiki_qa`, `dfm_evals/bfcl-v1`, `dfm_evals/bfcl-v1-da`, `dfm_evals/ifeval-da`
-- LUMI operational helpers under `lumi/`
+- local task registries
+- packaged multi-task suites
+- pairwise tournament runs and the tournament viewer
+- Every Eval Ever export from Inspect and EuroEval outputs
+- Prime sandbox integration
+- LUMI launcher helpers under [`lumi/`](lumi/)
 
-## LUMI
+## What Is Here
 
-For container/overlay/sbatch tooling on LUMI, see [`lumi/README.md`](lumi/README.md).
-This includes both `dfm-evals` suite workflows and the dedicated 2-node EuroEval launcher.
-Local overlay vLLM patch state is documented in the `Overlay vLLM Patches`
-section there.
+Local tasks currently exposed through the `dfm_evals` registry include:
 
-Quick notes:
+- `dfm_evals/multi_wiki_qa`
+- `dfm_evals/bfcl-v1`
+- `dfm_evals/bfcl-v1-da`
+- `dfm_evals/ifeval-da`
+- `dfm_evals/piqa`
 
-- Inspect smoke:
-  `OVERLAY_DIR=/path/to/overlay_vllm_minimal ./lumi/submit.sh --limit 1 --max-connections 2 --run-label inspect_smoke`
-- Throughput tuning guidance (`TP/PP/DP` + `--max-connections`) is in:
-  `lumi/README.md` under `Throughput Tuning` (e.g. 4B models can run `TP=1 PP=1 DP=8`).
-- `lumi/submit.sh` now launches externally managed vLLM server(s) (target + optional judge)
-  rather than relying on Inspect self-spawn.
-- EuroEval (example: Danish + longer wall time):
-  `OVERLAY_DIR=/path/to/overlay_vllm_minimal ./lumi/euroeval_submit.sh --model Qwen/Qwen3.5-397B-A17B --served-model-name Qwen/Qwen3.5-397B-A17B --euroeval-model Qwen/Qwen3.5-397B-A17B --generative-type reasoning --languages da --iterations 10 --time 12:00:00`
-- Job logs:
-  `logs/slurm/`
-- Inspect eval logs:
-  `logs/evals-logs/<run_label>/`
-- Every Eval Ever shared data root (standard `data/<benchmark>/<developer>/<model>/` layout):
-  `logs/every_eval_ever/data/`
-- Inspect results in Every Eval Ever format:
-  under `logs/every_eval_ever/data/` (`.json` aggregate + `.jsonl` instance-level)
-- EuroEval results:
-  `<OVERLAY_DIR>/euroeval-runs/<job_id>/euroeval_benchmark_results.jsonl`
-- EuroEval results in Every Eval Ever format:
-  under `logs/every_eval_ever/data/` (`.json` aggregate)
-- For `openai/*` models, set both:
-  `OPENAI_API_KEY` and `OPENAI_BASE_URL`.
+Packaged suites live in [`dfm_evals/eval-sets.yaml`](dfm_evals/eval-sets.yaml).
+Tournament example configs live under [`configs/tournaments/`](configs/tournaments/).
+The default Prime sandbox config lives at
+[`configs/sandboxes/prime-sandbox.yaml`](configs/sandboxes/prime-sandbox.yaml).
 
 ## Install
+
+Base install:
 
 ```bash
 uv sync
 ```
 
-Harbor-backed tasks such as `inspect_harbor/openthoughts_tblite` require
-Python 3.12 because `inspect-harbor` does. Install the optional extra in a
-3.12 environment:
+Development tools:
+
+```bash
+uv sync --group dev
+```
+
+Optional extras:
+
+Harbor tasks require `inspect-harbor`, which is currently Python 3.12-only:
 
 ```bash
 uv sync --extra harbor
 ```
 
-Compose-aware cloud sandboxes such as Modal and Daytona are provided via
-`inspect_sandboxes`, not by `dfm_evals` itself. That package is also Python
-3.12-only:
+Compose-aware cloud sandboxes such as Modal and Daytona come from
+`inspect_sandboxes`, which is also Python 3.12-only:
 
 ```bash
 uv sync --extra sandboxes
 ```
 
-## CLI
+## Quick Start
+
+List available tasks:
 
 ```bash
 uv run evals tasks
+```
+
+Run local tasks:
+
+```bash
 uv run evals run dfm_evals/multi_wiki_qa --model openai/gpt-5-mini
 uv run evals run dfm_evals/bfcl-v1 --model openai/gpt-5-mini
 uv run evals run dfm_evals/ifeval-da --model openai/gpt-5-mini
-uv run evals eee inspect --log-path logs/evals-logs/<run_label> --output-dir out/eee/data
-uv run evals eee euroeval --results-file /path/to/euroeval_benchmark_results.jsonl --output-dir out/eee/data
-# Optional: record inference endpoint/provider context
-uv run evals eee inspect --log-path logs/evals-logs/<run_label> --output-dir out/eee/data --inference-base-url https://inference.example/v1 --inference-provider-name my-provider
-uv run evals tournament --help
-uv run evals tournament view logs/evals-logs/<tournament_run_label>/state --host 127.0.0.1 --port 7576
+uv run evals run dfm_evals/piqa --model openai/gpt-5-mini
 ```
 
-For tournament runs, `evals tournament view` is the main report surface for
-standings, head-to-heads, prompt drilldown, and judged responses. `inspect
-view` is still useful for raw generation/judge log debugging, but it does not
-understand tournament state or final rankings.
+Run a packaged suite:
 
-Prime Sandbox provider (Inspect `--sandbox prime`):
+```bash
+uv run evals suite fundamentals \
+  --target-model openai/gpt-5-mini \
+  --judge-model openai/gpt-5-mini
+```
+
+Suites default to the packaged file at
+[`dfm_evals/eval-sets.yaml`](dfm_evals/eval-sets.yaml). Use `--file <path>` for
+custom suite definitions. Supported suite placeholders are:
+
+- `{{target_model}}`
+- `{{target_base_url}}`
+- `{{judge_model}}`
+- `{{judge_base_url}}`
+
+## Tournaments
+
+Inspect the tournament CLI:
+
+```bash
+uv run evals tournament --help
+```
+
+Example configs live under [`configs/tournaments/`](configs/tournaments/).
+
+View a completed tournament:
+
+```bash
+uv run evals tournament view logs/evals-logs/<tournament_run_label>/state \
+  --host 127.0.0.1 \
+  --port 7576
+```
+
+`evals tournament view` is the main report surface for standings, head-to-heads,
+prompt drilldown, and judged responses. `inspect view` is still useful for raw
+generation and judge logs, but it does not understand tournament state or final
+rankings.
+
+## Every Eval Ever Export
+
+Export Inspect logs:
+
+```bash
+uv run evals eee inspect \
+  --log-path logs/evals-logs/<run_label> \
+  --output-dir out/eee/data
+```
+
+Export EuroEval results:
+
+```bash
+uv run evals eee euroeval \
+  --results-file /path/to/euroeval_benchmark_results.jsonl \
+  --output-dir out/eee/data
+```
+
+Record inference endpoint metadata when needed:
+
+```bash
+uv run evals eee inspect \
+  --log-path logs/evals-logs/<run_label> \
+  --output-dir out/eee/data \
+  --inference-base-url https://inference.example/v1 \
+  --inference-provider-name my-provider
+```
+
+## Sandbox Providers
+
+### Prime
+
+Run with the built-in Prime sandbox provider:
 
 ```bash
 PRIME_API_KEY=... \
@@ -89,34 +151,21 @@ uv run evals run dfm_evals/multi_wiki_qa \
   --sandbox prime
 ```
 
-With explicit config file:
+By default, the Prime sandbox integration will look for
+[`configs/sandboxes/prime-sandbox.yaml`](configs/sandboxes/prime-sandbox.yaml)
+first, then fall back to legacy root-level filenames if you still have them in
+older checkouts. You can also pass an explicit config path with
+`--sandbox "prime:/path/to/prime-sandbox.yaml"`.
 
-```bash
-PRIME_API_KEY=... \
-uv run evals run dfm_evals/multi_wiki_qa \
-  --model openai/gpt-5-mini \
-  --sandbox "prime:$(pwd)/configs/sandboxes/prime-sandbox.yaml"
-```
-
-Example [`configs/sandboxes/prime-sandbox.yaml`](configs/sandboxes/prime-sandbox.yaml):
-
-```yaml
-docker_image: python:3.11-slim
-cpu_cores: 2
-memory_gb: 4
-disk_size_gb: 10
-timeout_minutes: 120
-working_dir: /workspace
-metadata_env_prefix: SAMPLE_METADATA_
-```
-
-Cleanup stale Inspect-created Prime sandboxes:
+Clean up stale Inspect-created Prime sandboxes:
 
 ```bash
 uv run inspect sandbox cleanup prime
 ```
 
-Modal Sandbox provider (via `inspect_sandboxes`, Inspect `--sandbox modal`):
+### Modal and Harbor
+
+Run with Modal through `inspect_sandboxes`:
 
 ```bash
 uv sync --extra sandboxes
@@ -126,60 +175,16 @@ uv run evals run dfm_evals/multi_wiki_qa \
   --sandbox modal
 ```
 
-With explicit Dockerfile:
+You can also pass an explicit Dockerfile or Compose file via
+`--sandbox "modal:/path/to/Dockerfile"` or
+`--sandbox "modal:/path/to/compose.yaml"`.
 
-```bash
-MODAL_TOKEN_ID=... MODAL_TOKEN_SECRET=... \
-uv run evals run dfm_evals/multi_wiki_qa \
-  --model openai/gpt-5-mini \
-  --sandbox "modal:$(pwd)/Dockerfile"
-```
+Harbor-backed tasks emit Inspect `ComposeConfig` sandbox specs from task
+Dockerfiles or Compose files. The built-in `prime` sandbox does not translate
+those compose specs. For Harbor tasks, use Docker or a compose-aware provider
+from `inspect_sandboxes` such as Modal.
 
-With explicit Compose file:
-
-```bash
-MODAL_TOKEN_ID=... MODAL_TOKEN_SECRET=... \
-uv run evals run dfm_evals/multi_wiki_qa \
-  --model openai/gpt-5-mini \
-  --sandbox "modal:$(pwd)/compose.yaml"
-```
-
-Cleanup stale Inspect-created Modal sandboxes:
-
-```bash
-uv run inspect sandbox cleanup modal
-```
-
-Suites default to the packaged file at `dfm_evals/eval-sets.yaml`.
-Use `--file <path>` for custom suite files.
-Packaged suites are provider-agnostic.
-
-```bash
-uv run evals suite fundamentals \
-  --target-model openai/gpt-5-mini \
-  --judge-model openai/gpt-5-mini
-```
-
-For external vLLM (recommended), set tool-calling flags on the vLLM server itself:
-
-```bash
-vllm serve ../../post \
-  --served-model-name gemma3-4b-hermes \
-  --enable-auto-tool-choice \
-  --tool-call-parser hermes \
-  --port 8000
-```
-
-Then run the suite against that endpoint (for LUMI launcher flags, see `lumi/README.md`):
-
-```bash
-OPENAI_BASE_URL=http://localhost:8000/v1 OPENAI_API_KEY=EMPTY \
-uv run evals suite fundamentals \
-  --target-model openai/gemma3-4b-hermes \
-  --judge-model openai/gemma3-4b-hermes
-```
-
-OpenThoughts-TBLite via `inspect-harbor`:
+OpenThoughts-TBLite example:
 
 ```bash
 uv sync --extra harbor --extra sandboxes
@@ -189,39 +194,72 @@ uv run evals suite openthoughts_tblite \
 ```
 
 The packaged Harbor suite defaults to `--no-fail-on-error --continue-on-fail`
-so sample-level agent failures such as bad tool loops or context exhaustion are
-recorded without aborting the full dataset run.
+so sample-level failures are logged without aborting the full run.
 
-Harbor emits Inspect `ComposeConfig` sandbox specs from the task `Dockerfile` /
-`docker-compose.yaml`. This repo's built-in `prime` sandbox does not translate
-those compose specs. For Harbor tasks, use the standard Docker sandbox or a
-compose-aware provider from `inspect_sandboxes` such as `modal`.
+If you hit Modal image-build failures caused by missing Docker `COPY` sources,
+see [`docs/modal-patch.md`](docs/modal-patch.md).
 
-Suites use placeholders in `args`, for example:
+## Model Endpoints
 
-- `--model`, `"{{target_model}}"`
-- `-T`, `grader_model={{judge_model}}`
-
-Supported placeholders:
-
-- `{{target_model}}`
-- `{{target_base_url}}`
-- `{{judge_model}}`
-- `{{judge_base_url}}`
-
-## Lint
+For externally served vLLM or other OpenAI-compatible endpoints, configure the
+server first and then point Inspect at it with `OPENAI_BASE_URL`. Example:
 
 ```bash
-uv run --group dev ruff check dfm_evals
+vllm serve ../../post \
+  --served-model-name gemma3-4b-hermes \
+  --enable-auto-tool-choice \
+  --tool-call-parser hermes \
+  --port 8000
 ```
 
-## Task layout
+```bash
+OPENAI_BASE_URL=http://localhost:8000/v1 OPENAI_API_KEY=EMPTY \
+uv run evals suite fundamentals \
+  --target-model openai/gemma3-4b-hermes \
+  --judge-model openai/gemma3-4b-hermes
+```
 
-Local tasks live under `dfm_evals/tasks/`.
+For `openai/*` model ids against a custom endpoint, set both
+`OPENAI_API_KEY` and `OPENAI_BASE_URL`.
 
-Current task:
+## LUMI
 
-- `dfm_evals/tasks/multi_wiki_qa.py`
-- `dfm_evals/tasks/bfcl/`
+For Slurm, overlay, vLLM, and EuroEval workflows on LUMI, see
+[`lumi/README.md`](lumi/README.md).
 
-Tournament modules live under `dfm_evals/tournament/`.
+Useful entry points:
+
+- `./lumi/submit.sh` for Inspect, suites, and tournaments
+- `./lumi/euroeval_submit.sh` for the EuroEval launcher
+- `./lumi/view.sh` for Inspect log viewing with the correct data root
+
+Common output locations:
+
+- Slurm logs: `logs/slurm/`
+- Inspect logs: `logs/evals-logs/<run_label>/`
+- Every Eval Ever exports: `logs/every_eval_ever/data/`
+
+## Repo Layout
+
+- [`dfm_evals/`](dfm_evals/) contains the package, task registry, scorers,
+  sandboxes, and tournament modules.
+- [`configs/`](configs/) contains checked-in example configs for tournaments and
+  sandboxes.
+- [`docs/`](docs/) contains small supporting notes such as the Modal patch
+  background.
+- [`lumi/`](lumi/) contains LUMI-specific launch and operations helpers.
+- [`tests/`](tests/) contains the test suite.
+
+## Development
+
+Run lint:
+
+```bash
+uv run --group dev ruff check dfm_evals tests
+```
+
+Run tests:
+
+```bash
+uv run --group dev pytest
+```
