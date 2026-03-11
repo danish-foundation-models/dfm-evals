@@ -20,8 +20,8 @@ def test_load_tournament_config_expands_prompt_source_from_definition_dir(
     prompts_path.write_text(
         "\n".join(
             [
-                '{"id": 1, "title": "First", "cateogry": "Essay", "prompt": "Write one."}',
-                '{"id": 2, "title": "Second", "cateogry": "Blog", "prompt": "Write two."}',
+                '{"id": 1, "title": "First", "category": "Essay", "prompt": "Write one."}',
+                '{"id": 2, "title": "Second", "category": "Blog", "prompt": "Write two."}',
             ]
         )
         + "\n",
@@ -42,9 +42,7 @@ prompt_source:
   text_field: prompt
   metadata_fields:
     - title
-    - cateogry
-  metadata_rename:
-    cateogry: category
+    - category
   static_metadata:
     source_file: creative.jsonl
 judge_model: openai/judge-model

@@ -7,15 +7,13 @@ contestant_models:
   - vllm/google-gemma-3-4b-pt-hermes-final
 
 prompt_source:
-  path: ../../../creative_writing_da_small.jsonl
+  path: ../data/creative_writing_da_small.jsonl
   format: jsonl
   id_template: creative-writing-da-{id:02d}
   text_field: prompt
   metadata_fields:
     - title
-    - cateogry
-  metadata_rename:
-    cateogry: category
+    - category
   static_metadata:
     source_file: creative_writing_da_small.jsonl
 
