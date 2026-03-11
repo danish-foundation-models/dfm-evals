@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import importlib
+import json
+import os
 import re
 import sys
 from collections.abc import Sequence
@@ -12,6 +16,13 @@ import yaml
 
 DEFAULT_SUITES_FILE = "eval-sets.yaml"
 PLACEHOLDER_PATTERN = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
+OPTIONAL_REGISTRY_MODULES = (
+    "inspect_sandboxes._registry",
+    "inspect_harbor._registry",
+)
+OPTIONAL_IMPORT_DEPENDENCIES = {
+    "inspect_sandboxes._registry": {"modal"},
+}
 
 
 @dataclass(frozen=True)
@@ -33,6 +44,215 @@ class ModelRouting:
     target_base_url: str | None = None
     judge_model: str | None = None
     judge_base_url: str | None = None
+
+
+def _is_missing_optional_module(exc: ModuleNotFoundError, module_name: str) -> bool:
+    parts = module_name.split(".")
+    acceptable_names = {".".join(parts[:index]) for index in range(1, len(parts) + 1)}
+    return exc.name in acceptable_names
+
+
+def _is_ignored_optional_dependency(
+    exc: ModuleNotFoundError,
+    module_name: str,
+    *,
+    ignored_dependencies: set[str] | None = None,
+) -> bool:
+    if _is_missing_optional_module(exc, module_name):
+        return True
+    return exc.name in (ignored_dependencies or set())
+
+
+def _import_registry_module(module_name: str, *, required: bool) -> None:
+    try:
+        importlib.import_module(module_name)
+    except ModuleNotFoundError as exc:
+        ignored_dependencies = OPTIONAL_IMPORT_DEPENDENCIES.get(module_name)
+        if required or not _is_ignored_optional_dependency(
+            exc,
+            module_name,
+            ignored_dependencies=ignored_dependencies,
+        ):
+            raise
+
+
+def _ensure_registry_modules_loaded() -> None:
+    _import_registry_module("dfm_evals._registry", required=True)
+    for module_name in OPTIONAL_REGISTRY_MODULES:
+        _import_registry_module(module_name, required=False)
+    _patch_inspect_sandboxes_modal_context_dir()
+
+
+def _select_modal_compose_service(config: object) -> object | None:
+    services = getattr(config, "services", None)
+    if services is None:
+        return None
+
+    for service in services.values():
+        if getattr(service, "x_default", False):
+            return service
+
+    return services.get("default") or next(iter(services.values()), None)
+
+
+def _resolve_modal_build_context_dir(build: object, compose_dir: Path) -> Path:
+    if isinstance(build, str):
+        return compose_dir / build
+
+    return compose_dir / (getattr(build, "context", None) or ".")
+
+
+def _patch_inspect_sandboxes_modal_context_dir() -> None:
+    module_names = (
+        "inspect_sandboxes.modal._compose",
+        "inspect_sandboxes.modal._modal",
+    )
+    imported_modules: dict[str, object] = {}
+    for module_name in module_names:
+        try:
+            imported_modules[module_name] = importlib.import_module(module_name)
+        except ModuleNotFoundError as exc:
+            if _is_ignored_optional_dependency(
+                exc,
+                module_name,
+                ignored_dependencies={"modal"},
+            ):
+                return
+            raise
+
+    compose_module = imported_modules["inspect_sandboxes.modal._compose"]
+    modal_module = imported_modules["inspect_sandboxes.modal._modal"]
+    if not hasattr(compose_module, "convert_compose_to_modal_params") or not hasattr(
+        modal_module, "convert_compose_to_modal_params"
+    ):
+        return
+
+    patched_convert = getattr(compose_module, "convert_compose_to_modal_params")
+    if not getattr(patched_convert, "__dfm_evals_patched__", False):
+        original_convert = patched_convert
+
+        def patched_convert(config: object, compose_path: str | None) -> dict[str, object]:
+            params = original_convert(config, compose_path)
+            service = _select_modal_compose_service(config)
+            build = getattr(service, "build", None) if service is not None else None
+            if build is None:
+                return params
+
+            compose_dir = Path(compose_path).parent if compose_path else Path.cwd()
+            dockerfile_path = compose_module.resolve_dockerfile_path(build, compose_dir)
+            context_dir = _resolve_modal_build_context_dir(build, compose_dir)
+            params["image"] = compose_module.modal.Image.from_dockerfile(
+                str(dockerfile_path),
+                context_dir=str(context_dir),
+            )
+            return params
+
+        patched_convert.__dfm_evals_patched__ = True
+        compose_module.convert_compose_to_modal_params = patched_convert
+
+    modal_module.convert_compose_to_modal_params = compose_module.convert_compose_to_modal_params
+
+
+def _load_model_info_overrides() -> dict[str, dict[str, object]]:
+    raw_overrides = os.environ.get("DFM_EVALS_MODEL_INFO_OVERRIDES", "").strip()
+    if not raw_overrides:
+        return {}
+
+    try:
+        payload = json.loads(raw_overrides)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Invalid DFM_EVALS_MODEL_INFO_OVERRIDES: {exc.msg}"
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError(
+            "Invalid DFM_EVALS_MODEL_INFO_OVERRIDES: expected a JSON object."
+        )
+
+    overrides: dict[str, dict[str, object]] = {}
+    for model_name, raw_info in payload.items():
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise ValueError(
+                "Invalid DFM_EVALS_MODEL_INFO_OVERRIDES: model names must be non-empty strings."
+            )
+
+        if isinstance(raw_info, int):
+            context_length = raw_info
+            output_tokens: int | None = None
+            display_name: str | None = None
+            organization: str | None = None
+        elif isinstance(raw_info, dict):
+            raw_context_length = raw_info.get("context_length", raw_info.get("input_tokens"))
+            context_length = (
+                raw_context_length if isinstance(raw_context_length, int) else None
+            )
+            raw_output_tokens = raw_info.get("output_tokens")
+            output_tokens = (
+                raw_output_tokens if isinstance(raw_output_tokens, int) else None
+            )
+            raw_display_name = raw_info.get("display_name")
+            display_name = (
+                raw_display_name.strip()
+                if isinstance(raw_display_name, str) and raw_display_name.strip()
+                else None
+            )
+            raw_organization = raw_info.get("organization")
+            organization = (
+                raw_organization.strip()
+                if isinstance(raw_organization, str) and raw_organization.strip()
+                else None
+            )
+        else:
+            raise ValueError(
+                "Invalid DFM_EVALS_MODEL_INFO_OVERRIDES: each value must be an integer or object."
+            )
+
+        if context_length is None or context_length <= 0:
+            raise ValueError(
+                "Invalid DFM_EVALS_MODEL_INFO_OVERRIDES: `context_length` must be a positive integer."
+            )
+
+        info: dict[str, object] = {"context_length": context_length}
+        if output_tokens is not None:
+            info["output_tokens"] = output_tokens
+        if display_name is not None:
+            info["model"] = display_name
+        if organization is not None:
+            info["organization"] = organization
+        overrides[model_name.strip()] = info
+
+    return overrides
+
+
+def _apply_model_info_overrides() -> None:
+    overrides = _load_model_info_overrides()
+    if len(overrides) == 0:
+        return
+
+    from inspect_ai.model import ModelInfo, set_model_info
+
+    for model_name, info_kwargs in overrides.items():
+        set_model_info(model_name, ModelInfo(**info_kwargs))
+
+
+def _env_flag_enabled(name: str) -> bool:
+    value = os.environ.get(name, "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _modal_output_context() -> contextlib.AbstractContextManager[object]:
+    if not _env_flag_enabled("DFM_EVALS_MODAL_ENABLE_OUTPUT"):
+        return contextlib.nullcontext()
+
+    try:
+        modal = importlib.import_module("modal")
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "DFM_EVALS_MODAL_ENABLE_OUTPUT=1 requires the `modal` package to be installed."
+        ) from exc
+
+    return modal.enable_output()
 
 
 def _normalize_remainder_args(args: Sequence[str]) -> list[str]:
@@ -275,18 +495,20 @@ def _run_suite_grouped(
 
 
 def _forward_to_inspect(args: Sequence[str], *, prog_name: str = "evals") -> int:
-    # Ensure local task registry is loaded.
-    import dfm_evals._registry  # noqa: F401, I001
+    # Ensure local and optional third-party task registries are loaded.
+    _ensure_registry_modules_loaded()
+    _apply_model_info_overrides()
     from inspect_ai._cli.main import inspect as inspect_command
 
     forwarded = _normalize_remainder_args(args)
 
     try:
-        inspect_command.main(
-            args=forwarded,
-            prog_name=prog_name,
-            standalone_mode=False,
-        )
+        with _modal_output_context():
+            inspect_command.main(
+                args=forwarded,
+                prog_name=prog_name,
+                standalone_mode=False,
+            )
     except SystemExit as exc:
         code = exc.code
         if isinstance(code, int):
@@ -297,8 +519,9 @@ def _forward_to_inspect(args: Sequence[str], *, prog_name: str = "evals") -> int
 
 
 def _list_registered_tasks(prefix: str) -> list[str]:
-    # Ensure local registry module is imported so task registration executes.
-    import dfm_evals._registry  # noqa: F401, I001
+    # Ensure local and optional third-party registries are imported so task
+    # registration executes before querying the registry.
+    _ensure_registry_modules_loaded()
     from inspect_ai._util.registry import registry_find, registry_info
 
     registered = registry_find(
@@ -370,18 +593,193 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Include description and tasks in output",
     )
+    subparsers.add_parser(
+        "tournament",
+        help="Tournament commands",
+        add_help=False,
+    )
     tasks_parser = subparsers.add_parser("tasks", help="List registered task names")
     tasks_parser.add_argument(
         "--prefix",
         default="",
         help="Only show tasks with this registry prefix",
     )
+    eee_parser = subparsers.add_parser(
+        "eee",
+        help="Export Inspect/EuroEval/tournament results to every_eval_ever format",
+    )
+    eee_subparsers = eee_parser.add_subparsers(dest="eee_command")
+    eee_subparsers.required = True
+
+    eee_inspect_parser = eee_subparsers.add_parser(
+        "inspect",
+        help="Convert Inspect eval logs (`.eval` or log dir) to every_eval_ever JSON",
+    )
+    eee_inspect_parser.add_argument(
+        "--log-path",
+        required=True,
+        help="Inspect log file (.eval/.json) or directory containing logs",
+    )
+    eee_inspect_parser.add_argument(
+        "--output-dir",
+        default="every_eval_ever/data",
+        help="Output directory root for converted JSON files",
+    )
+    eee_inspect_parser.add_argument(
+        "--source-organization-name",
+        default="unknown",
+        help="Organization responsible for this evaluation run metadata",
+    )
+    eee_inspect_parser.add_argument(
+        "--evaluator-relationship",
+        choices=["first_party", "third_party", "collaborative", "other"],
+        default="third_party",
+        help="Relationship between evaluator and model provider",
+    )
+    eee_inspect_parser.add_argument(
+        "--source-organization-url",
+        default=None,
+        help="Optional URL for the source organization",
+    )
+    eee_inspect_parser.add_argument(
+        "--source-organization-logo-url",
+        default=None,
+        help="Optional logo URL for the source organization",
+    )
+    eee_inspect_parser.add_argument(
+        "--eval-library-name",
+        default="inspect_ai",
+        help="Evaluation library name to emit in exported metadata",
+    )
+    eee_inspect_parser.add_argument(
+        "--eval-library-version",
+        default=None,
+        help="Optional evaluation library version override",
+    )
+    eee_inspect_parser.add_argument(
+        "--inference-base-url",
+        default=None,
+        help="Optional inference API base URL to record in exported metadata",
+    )
+    eee_inspect_parser.add_argument(
+        "--inference-provider-name",
+        default=None,
+        help="Optional provider label to record in exported metadata",
+    )
+
+    eee_euroeval_parser = eee_subparsers.add_parser(
+        "euroeval",
+        help="Convert EuroEval benchmark JSONL to every_eval_ever JSON",
+    )
+    eee_euroeval_parser.add_argument(
+        "--results-file",
+        required=True,
+        help="Path to `euroeval_benchmark_results.jsonl`",
+    )
+    eee_euroeval_parser.add_argument(
+        "--output-dir",
+        default="every_eval_ever/data",
+        help="Output directory root for converted JSON files",
+    )
+    eee_euroeval_parser.add_argument(
+        "--source-organization-name",
+        default="unknown",
+        help="Organization responsible for this evaluation run metadata",
+    )
+    eee_euroeval_parser.add_argument(
+        "--evaluator-relationship",
+        choices=["first_party", "third_party", "collaborative", "other"],
+        default="third_party",
+        help="Relationship between evaluator and model provider",
+    )
+    eee_euroeval_parser.add_argument(
+        "--source-organization-url",
+        default=None,
+        help="Optional URL for the source organization",
+    )
+    eee_euroeval_parser.add_argument(
+        "--source-organization-logo-url",
+        default=None,
+        help="Optional logo URL for the source organization",
+    )
+    eee_euroeval_parser.add_argument(
+        "--eval-library-name",
+        default="euroeval",
+        help="Evaluation library name to emit in exported metadata",
+    )
+    eee_euroeval_parser.add_argument(
+        "--eval-library-version",
+        default=None,
+        help="Optional evaluation library version override",
+    )
+    eee_euroeval_parser.add_argument(
+        "--inference-base-url",
+        default=None,
+        help="Optional inference API base URL to record in exported metadata",
+    )
+    eee_euroeval_parser.add_argument(
+        "--inference-provider-name",
+        default=None,
+        help="Optional provider label to record in exported metadata",
+    )
+
+    eee_tournament_parser = eee_subparsers.add_parser(
+        "tournament",
+        help="Convert tournament state to every_eval_ever JSON",
+    )
+    eee_tournament_parser.add_argument(
+        "--target",
+        required=True,
+        help="Tournament config path or state directory",
+    )
+    eee_tournament_parser.add_argument(
+        "--output-dir",
+        default="every_eval_ever/data",
+        help="Output directory root for converted JSON files",
+    )
+    eee_tournament_parser.add_argument(
+        "--source-organization-name",
+        default="unknown",
+        help="Organization responsible for this evaluation run metadata",
+    )
+    eee_tournament_parser.add_argument(
+        "--evaluator-relationship",
+        choices=["first_party", "third_party", "collaborative", "other"],
+        default="third_party",
+        help="Relationship between evaluator and model provider",
+    )
+    eee_tournament_parser.add_argument(
+        "--source-organization-url",
+        default=None,
+        help="Optional URL for the source organization",
+    )
+    eee_tournament_parser.add_argument(
+        "--source-organization-logo-url",
+        default=None,
+        help="Optional logo URL for the source organization",
+    )
+    eee_tournament_parser.add_argument(
+        "--eval-library-name",
+        default="dfm_evals.tournament",
+        help="Evaluation library name to emit in exported metadata",
+    )
+    eee_tournament_parser.add_argument(
+        "--eval-library-version",
+        default=None,
+        help="Optional evaluation library version override",
+    )
 
     argv_list = list(argv) if argv is not None else sys.argv[1:]
     args, passthrough_args = parser.parse_known_args(argv_list)
 
-    if len(passthrough_args) > 0 and args.command != "suite":
+    if len(passthrough_args) > 0 and args.command not in ("suite", "tournament"):
         parser.error(f"unrecognized arguments: {' '.join(passthrough_args)}")
+
+    if args.command == "tournament":
+        from dfm_evals.tournament.cli import main as tournament_main
+
+        forwarded = _normalize_remainder_args(passthrough_args)
+        return tournament_main(forwarded)
 
     if args.command == "run":
         return _forward_to_inspect(["eval", *args.args], prog_name="evals")
@@ -466,6 +864,62 @@ def main(argv: Sequence[str] | None = None) -> int:
         tasks = _list_registered_tasks(args.prefix)
         for task_name in tasks:
             print(task_name)
+        return 0
+
+    if args.command == "eee":
+        from dfm_evals.eee_export import (
+            export_euroeval_results,
+            export_inspect_logs,
+            export_tournament_results,
+        )
+
+        try:
+            if args.eee_command == "inspect":
+                written = export_inspect_logs(
+                    log_path=args.log_path,
+                    output_dir=args.output_dir,
+                    source_organization_name=args.source_organization_name,
+                    evaluator_relationship=args.evaluator_relationship,
+                    source_organization_url=args.source_organization_url,
+                    source_organization_logo_url=args.source_organization_logo_url,
+                    eval_library_name=args.eval_library_name,
+                    eval_library_version=args.eval_library_version,
+                    inference_base_url=args.inference_base_url,
+                    inference_provider_name=args.inference_provider_name,
+                )
+            elif args.eee_command == "euroeval":
+                written = export_euroeval_results(
+                    results_file=args.results_file,
+                    output_dir=args.output_dir,
+                    source_organization_name=args.source_organization_name,
+                    evaluator_relationship=args.evaluator_relationship,
+                    source_organization_url=args.source_organization_url,
+                    source_organization_logo_url=args.source_organization_logo_url,
+                    eval_library_name=args.eval_library_name,
+                    eval_library_version=args.eval_library_version,
+                    inference_base_url=args.inference_base_url,
+                    inference_provider_name=args.inference_provider_name,
+                )
+            elif args.eee_command == "tournament":
+                written = export_tournament_results(
+                    target=args.target,
+                    output_dir=args.output_dir,
+                    source_organization_name=args.source_organization_name,
+                    evaluator_relationship=args.evaluator_relationship,
+                    source_organization_url=args.source_organization_url,
+                    source_organization_logo_url=args.source_organization_logo_url,
+                    eval_library_name=args.eval_library_name,
+                    eval_library_version=args.eval_library_version,
+                )
+            else:
+                parser.error(f"unsupported eee subcommand: {args.eee_command}")
+        except (FileNotFoundError, RuntimeError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
+
+        for path in written:
+            print(path)
+        print(f"Exported {len(written)} file(s).")
         return 0
 
     parser.print_help()

@@ -30,11 +30,18 @@ sets:
   fundamentals:
     description: Broad inspect_evals fundamentals set
     tasks:
-      - inspect_evals/gpqa_diamond
       - inspect_evals/gsm8k
-      - inspect_evals/math
       - inspect_evals/ifeval
+      - dfm_evals/ifeval-da
       - inspect_evals/truthfulqa
+      - name: inspect_evals/agentharm_benign
+        args:
+          - -T
+          - refusal_judge={{judge_model}}
+          - -T
+          - semantic_judge={{judge_model}}
+          - --limit
+          - "20"
       - name: inspect_evals/simpleqa_verified
         args:
           - -T
@@ -44,6 +51,21 @@ sets:
     args:
       - --model
       - "{{target_model}}"
+      - --limit
+      - "100"
+      - --temperature
+      - "0"
+  openthoughts_tblite:
+    description: inspect_harbor OpenThoughts-TBLite suite (requires inspect-harbor; sample failures are logged without aborting the full eval)
+    tasks:
+      - inspect_harbor/openthoughts_tblite
+    args:
+      - --model
+      - "{{target_model}}"
+      - --no-fail-on-error
+      - --continue-on-fail
+      - --message-limit
+      - "100"
       - --limit
       - "100"
       - --temperature

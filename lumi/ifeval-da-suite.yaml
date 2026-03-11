@@ -1,0 +1,5 @@
+sets:
+  ifeval-da:
+    description: Danish IFEval only
+    tasks:
+      - dfm_evals/ifeval-da
