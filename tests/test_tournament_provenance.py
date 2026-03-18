@@ -4,6 +4,8 @@ from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 
 def _install_trueskill_stub() -> None:
     if "trueskill" in sys.modules:
@@ -426,3 +428,27 @@ def test_index_generation_responses_rejects_stale_logs_when_prompt_text_changes(
         "model/A": ["prompt-1"],
         "model/B": ["prompt-1"],
     }
+
+
+def test_index_generation_responses_raises_on_unreadable_log(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    modules = _tournament_modules()
+    config = _config(tmp_path, ["model/A", "model/B"])
+    indexer_module = sys.modules["dfm_evals.tournament.indexer"]
+
+    bad_log = SimpleNamespace(
+        name=(config.generation_log_dir / "bad.eval").as_posix(),
+        mtime=100.0,
+    )
+
+    monkeypatch.setattr(indexer_module, "list_eval_logs", lambda path: [bad_log])
+    monkeypatch.setattr(
+        indexer_module,
+        "read_eval_log",
+        lambda log_info, header_only=True: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    with pytest.raises(RuntimeError, match="bad\\.eval"):
+        modules["index_generation_responses"](config)

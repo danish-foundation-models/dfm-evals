@@ -279,8 +279,11 @@ def _record_matches_filter(record: DatasetRecord, filter: Any) -> bool:
         low, high = value
         try:
             return low <= record_value <= high
-        except TypeError:
-            return False
+        except TypeError as exc:
+            raise PrerequisiteError(
+                f"Filter op 'between' cannot compare column '{column}' "
+                f"value {record_value!r} against bounds {value!r}."
+            ) from exc
     if op == "contains":
         if isinstance(record_value, str):
             return isinstance(value, str) and value in record_value
@@ -307,8 +310,11 @@ def _record_matches_filter(record: DatasetRecord, filter: Any) -> bool:
             return record_value < value
         if op == "lte":
             return record_value <= value
-    except TypeError:
-        return False
+    except TypeError as exc:
+        raise PrerequisiteError(
+            f"Filter op '{op}' cannot compare column '{column}' "
+            f"value {record_value!r} against {value!r}."
+        ) from exc
 
     raise PrerequisiteError(f"Unsupported filter operation: {op}")
 

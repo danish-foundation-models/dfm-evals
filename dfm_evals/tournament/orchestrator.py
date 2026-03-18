@@ -127,7 +127,11 @@ def resume_tournament(
     with TournamentStore(state_dir) as store:
         store.initialize_from_config(parsed)
         _set_run_state_defaults(store, parsed)
-        _ensure_response_coverage(parsed, store, force_regenerate=False)
+        _ensure_response_coverage(
+            parsed,
+            store,
+            force_regenerate=parsed.regenerate_completions,
+        )
         return _run_loop(parsed, store, max_batches=max_batches)
 
 
@@ -545,14 +549,56 @@ def _judge_pending_matches(
         )
         _ingest_judge_logs(config, store, judge_result.logs)
 
+    ready_match_ids = _complete_match_ids_for_batch(
+        config,
+        store,
+        batch_id,
+        match_ids={match.match_id for match in matches},
+    )
     with store.transaction():
-        store.set_batch_match_status(
-            batch_id=batch_id,
-            status="judged",
-            from_statuses=["scheduled"],
-            commit=False,
-        )
-    return len(matches)
+        for match_id in sorted(ready_match_ids):
+            store.set_match_status(match_id, "judged", commit=False)
+    return len(ready_match_ids)
+
+
+def _complete_match_ids_for_batch(
+    config: TournamentConfig,
+    store: TournamentStore,
+    batch_id: str,
+    *,
+    match_ids: set[str] | None = None,
+) -> set[str]:
+    rows = store.load_batch_judgments(batch_id)
+    if match_ids is None:
+        match_ids = {str(row["match_id"]) for row in rows}
+
+    sides_by_match: dict[str, set[str]] = {match_id: set() for match_id in match_ids}
+    for row in rows:
+        match_id = str(row["match_id"])
+        if match_id not in sides_by_match:
+            continue
+
+        side = row["side"]
+        if side is None:
+            continue
+
+        side_value = str(side)
+        if side_value not in ("ab", "ba"):
+            continue
+
+        sides_by_match[match_id].add(side_value)
+
+    complete_match_ids: set[str] = set()
+    for match_id, side_values in sides_by_match.items():
+        if config.side_swap:
+            if {"ab", "ba"}.issubset(side_values):
+                complete_match_ids.add(match_id)
+            continue
+
+        if len(side_values.intersection({"ab", "ba"})) > 0:
+            complete_match_ids.add(match_id)
+
+    return complete_match_ids
 
 
 def _ingest_judge_logs(
@@ -629,7 +675,36 @@ def _apply_pending_batch_outcomes(
     batch_id: str,
     round_index: int,
 ) -> dict[str, int | bool] | None:
-    rows_to_rate = store.load_batch_matches(batch_id, statuses=["judged", "scheduled"])
+    pending_rows = store.load_batch_matches(batch_id, statuses=["judged", "scheduled"])
+    if len(pending_rows) == 0:
+        return None
+
+    pending_match_ids = {str(row["match_id"]) for row in pending_rows}
+    complete_match_ids = _complete_match_ids_for_batch(
+        config,
+        store,
+        batch_id,
+        match_ids=pending_match_ids,
+    )
+    incomplete_match_ids = sorted(pending_match_ids - complete_match_ids)
+    if len(incomplete_match_ids) > 0:
+        with store.transaction():
+            for match_id in incomplete_match_ids:
+                store.set_match_status(match_id, "scheduled", commit=False)
+            run_state.set_run_status(store, RUN_STATUS_STOPPED, commit=False)
+            run_state.set_stop_reasons(store, ["incomplete_judgments"], commit=False)
+        return {
+            "processed": 0,
+            "skipped": 0,
+            "converged": False,
+            "blocked": True,
+        }
+
+    with store.transaction():
+        for match_id in sorted(complete_match_ids):
+            store.set_match_status(match_id, "judged", commit=False)
+
+    rows_to_rate = store.load_batch_matches(batch_id, statuses=["judged"])
     if len(rows_to_rate) == 0:
         return None
 

@@ -1068,10 +1068,6 @@ def _canonical_decision(
     if side_swap:
         if ab is not None and ba is not None:
             return reconcile_side_swap(ab, ba, invalid_policy=invalid_policy)
-        if ab is not None:
-            return canonicalize_side_decision(ab, "ab")
-        if ba is not None:
-            return canonicalize_side_decision(ba, "ba")
         return "INVALID"
 
     if ab is not None:

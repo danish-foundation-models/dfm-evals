@@ -125,8 +125,11 @@ def _index_generation_responses(
                     report.responses_indexed += 1
                     if inserted:
                         report.responses_inserted += 1
-            except Exception:
+            except Exception as exc:
                 report.log_errors += 1
+                raise RuntimeError(
+                    f"Failed to index generation log: {log_info.name}"
+                ) from exc
 
     report.missing_by_model = store.missing_prompt_ids_by_model(
         config.contestant_models, expected_prompt_ids

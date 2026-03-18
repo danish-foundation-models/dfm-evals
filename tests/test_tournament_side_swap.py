@@ -178,10 +178,158 @@ def test_one_sided_side_swap_judgment_blocks_rating(tmp_path: Path) -> None:
 
     assert result == {
         "processed": 0,
-        "skipped": 1,
+        "skipped": 0,
         "converged": False,
         "blocked": True,
     }
     assert state.run_status == "stopped"
-    assert state.stop_reasons == ["no_valid_judgments"]
+    assert state.stop_reasons == ["incomplete_judgments"]
     assert len(rows) == 1
+
+
+def test_incomplete_match_keeps_batch_from_rating_other_matches(tmp_path: Path) -> None:
+    modules = _modules()
+    config = _config(tmp_path, judge_max_samples=2)
+    run_state = modules["run_state"]
+    TournamentStore = modules["TournamentStore"]
+    model_a = modules["model_id"]("model/A")
+    model_b = modules["model_id"]("model/B")
+    response_a = modules["response_id"](
+        model_a,
+        "prompt-1",
+        source_log="a.eval",
+        sample_id="1",
+        sample_uuid="uuid-a",
+        response_text="response A",
+    )
+    response_b = modules["response_id"](
+        model_b,
+        "prompt-1",
+        source_log="b.eval",
+        sample_id="1",
+        sample_uuid="uuid-b",
+        response_text="response B",
+    )
+    complete_match_id = modules["match_id"](
+        model_a,
+        model_b,
+        "prompt-1",
+        1,
+        "batch-000001",
+    )
+    incomplete_match_id = modules["match_id"](
+        model_a,
+        model_b,
+        "prompt-1",
+        2,
+        "batch-000001",
+    )
+
+    with TournamentStore(config.state_dir) as store:
+        store.initialize_from_config(config)
+        run_state.ensure_defaults(
+            store,
+            config_json=config.model_dump_json(),
+            run_status="running",
+        )
+
+        store.upsert_response(
+            response_id=response_a,
+            model_id=model_a,
+            prompt_id="prompt-1",
+            response_text="response A",
+            source_log="a.eval",
+            source_log_mtime=100.0,
+            sample_id="1",
+            sample_uuid="uuid-a",
+        )
+        store.upsert_response(
+            response_id=response_b,
+            model_id=model_b,
+            prompt_id="prompt-1",
+            response_text="response B",
+            source_log="b.eval",
+            source_log_mtime=100.0,
+            sample_id="1",
+            sample_uuid="uuid-b",
+        )
+        store.upsert_match(
+            match_id=complete_match_id,
+            model_a=model_a,
+            model_b=model_b,
+            prompt_id="prompt-1",
+            response_a_id=response_a,
+            response_b_id=response_b,
+            batch_id="batch-000001",
+            round_index=1,
+            status="judged",
+        )
+        store.upsert_match(
+            match_id=incomplete_match_id,
+            model_a=model_a,
+            model_b=model_b,
+            prompt_id="prompt-1",
+            response_a_id=response_a,
+            response_b_id=response_b,
+            batch_id="batch-000001",
+            round_index=2,
+            status="judged",
+        )
+        store.upsert_judgment(
+            judgment_id="complete-ab",
+            match_id=complete_match_id,
+            side="ab",
+            decision="A",
+            judge_model=config.judge_model,
+            explanation="A wins.",
+            raw_completion="DECISION: A",
+            source_log="judge.eval",
+            sample_uuid="complete-ab",
+        )
+        store.upsert_judgment(
+            judgment_id="complete-ba",
+            match_id=complete_match_id,
+            side="ba",
+            decision="B",
+            judge_model=config.judge_model,
+            explanation="A still wins.",
+            raw_completion="DECISION: B",
+            source_log="judge.eval",
+            sample_uuid="complete-ba",
+        )
+        store.upsert_judgment(
+            judgment_id="incomplete-ab",
+            match_id=incomplete_match_id,
+            side="ab",
+            decision="A",
+            judge_model=config.judge_model,
+            explanation="Only one side finished.",
+            raw_completion="DECISION: A",
+            source_log="judge.eval",
+            sample_uuid="incomplete-ab",
+        )
+
+        result = modules["_apply_pending_batch_outcomes"](
+            config,
+            store,
+            batch_id="batch-000001",
+            round_index=1,
+        )
+        state = run_state.load(store, run_status_default="running")
+        judged_rows = store.load_batch_matches("batch-000001", statuses=["judged"])
+        scheduled_rows = store.load_batch_matches("batch-000001", statuses=["scheduled"])
+        rated_rows = store.load_batch_matches("batch-000001", statuses=["rated"])
+        ratings = store.load_active_model_ratings()
+
+    assert result == {
+        "processed": 0,
+        "skipped": 0,
+        "converged": False,
+        "blocked": True,
+    }
+    assert state.run_status == "stopped"
+    assert state.stop_reasons == ["incomplete_judgments"]
+    assert [row["match_id"] for row in judged_rows] == [complete_match_id]
+    assert [row["match_id"] for row in scheduled_rows] == [incomplete_match_id]
+    assert rated_rows == []
+    assert all(rating.games == 0 for rating in ratings.values())

@@ -333,6 +333,67 @@ def test_view_data_source_summary_and_pairwise(tmp_path: Path) -> None:
     assert cell["score"] == 0.75
 
 
+def test_view_ignores_unrated_incomplete_matches_in_pairwise(tmp_path: Path) -> None:
+    modules = _modules()
+    config = _config(tmp_path)
+    ids = _seed_state(config)
+    source = modules["TournamentViewDataSource"](config)
+    incomplete_match = modules["match_id"](
+        ids["model_a_id"],
+        ids["model_b_id"],
+        "prompt-1",
+        3,
+        "batch-000003",
+    )
+
+    with modules["TournamentStore"](config.state_dir) as store:
+        response_row = store.connection().execute(
+            """
+            SELECT response_a_id, response_b_id
+            FROM matches
+            WHERE match_id = ?
+            """,
+            (ids["match_1"],),
+        ).fetchone()
+        assert response_row is not None
+
+        store.upsert_match(
+            match_id=incomplete_match,
+            model_a=ids["model_a_id"],
+            model_b=ids["model_b_id"],
+            prompt_id="prompt-1",
+            response_a_id=str(response_row["response_a_id"]),
+            response_b_id=str(response_row["response_b_id"]),
+            batch_id="batch-000003",
+            round_index=3,
+            status="judged",
+        )
+        store.upsert_judgment(
+            judgment_id="judge-3-ab",
+            match_id=incomplete_match,
+            side="ab",
+            decision="A",
+            judge_model=config.judge_model,
+            explanation="Only one side completed.",
+            raw_completion="DECISION: A",
+            source_log="judge-3.eval",
+            sample_uuid="judge-3-ab",
+        )
+
+    pairwise = source.pairwise()
+    cell = pairwise["rows"][0]["cells"][1]
+    assert cell["wins"] == 1
+    assert cell["losses"] == 0
+    assert cell["ties"] == 1
+    assert cell["invalid"] == 0
+    assert cell["rated_games"] == 2
+
+    detail = source.match_detail(incomplete_match)
+    assert detail["status"] == "judged"
+    assert detail["canonical_decision"] == "INVALID"
+    assert detail["winner_model_id"] is None
+
+
 def test_view_data_source_match_filters_and_details(tmp_path: Path) -> None:
     modules = _modules()
     config = _config(tmp_path)

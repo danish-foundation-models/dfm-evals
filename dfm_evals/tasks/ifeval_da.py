@@ -335,7 +335,7 @@ def _patch_instruction_registry() -> None:
             try:
                 return langdetect.detect(value) == self._language
             except langdetect.LangDetectException:
-                return True
+                return False
 
     custom_registry: dict[str, type[Any]] = {
         "change_case:lowercase_letters": _LowercaseLettersChecker,

@@ -1,11 +1,14 @@
 from pathlib import Path
 
+import pytest
+
 from dfm_evals.tournament import _run_state as run_state
 from dfm_evals.tournament import orchestrator
 from dfm_evals.tournament.config import TournamentConfig, TournamentPrompt
 from dfm_evals.tournament.orchestrator import (
     add_models,
     register_models,
+    resume_tournament,
     update_tournament_config,
 )
 from dfm_evals.tournament.store import TournamentStore
@@ -200,3 +203,25 @@ def test_update_tournament_config_can_raise_max_total_matches_and_clear_stop_rea
         )
 
     assert persisted.max_total_matches == 240
+
+
+def test_resume_tournament_respects_regenerate_completions(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = _build_config(tmp_path).model_copy(
+        update={"regenerate_completions": True}
+    )
+    calls: list[bool] = []
+
+    def _capture_coverage(*args, force_regenerate: bool, **kwargs) -> None:
+        del args, kwargs
+        calls.append(force_regenerate)
+        raise RuntimeError("stop after coverage")
+
+    monkeypatch.setattr(orchestrator, "_ensure_response_coverage", _capture_coverage)
+
+    with pytest.raises(RuntimeError, match="stop after coverage"):
+        resume_tournament(config)
+
+    assert calls == [True]
