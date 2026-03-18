@@ -18,3 +18,29 @@ def test_record_matches_filter_raises_on_invalid_relational_comparison() -> None
             {"score": "high"},
             {"column": "score", "op": "gt", "value": 5},
         )
+
+
+def test_record_matches_filter_supports_logical_conditions() -> None:
+    record = {"lang": "da", "score": 7, "tags": ["qa", "demo"]}
+
+    assert _record_matches_filter(
+        record,
+        {
+            "all": [
+                {"column": "lang", "op": "eq", "value": "da"},
+                {
+                    "any": [
+                        {"column": "score", "op": "gte", "value": 10},
+                        {"column": "tags", "op": "contains", "value": "qa"},
+                    ]
+                },
+            ]
+        },
+    )
+
+
+def test_record_matches_filter_supports_not_contains() -> None:
+    assert _record_matches_filter(
+        {"tags": ["qa", "demo"]},
+        {"column": "tags", "op": "not_contains", "value": "prod"},
+    )

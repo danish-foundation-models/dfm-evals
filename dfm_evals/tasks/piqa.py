@@ -48,7 +48,6 @@ def piqa(
 ) -> Task:
     path = Path(dataset_path)
     records = _load_records(path)
-    _validate_records(records=records, path=path)
     samples = [_record_to_sample(record) for record in records]
 
     if shuffle:
@@ -73,21 +72,18 @@ def _load_records(path: Path) -> list[dict[str, Any]]:
 
     loaded = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(loaded, list):
-        raise ValueError(f"Expected PIQA dataset JSON list, got: {type(loaded).__name__}")
+        raise ValueError(
+            f"Expected PIQA dataset JSON list, got: {type(loaded).__name__}"
+        )
 
-    records: list[dict[str, Any]] = []
-    for idx, raw in enumerate(loaded):
-        if not isinstance(raw, dict):
-            raise ValueError(f"Record {idx} must be an object, got: {type(raw).__name__}")
-        records.append(raw)
-    return records
+    return _validate_and_normalize_records(loaded=loaded, path=path)
 
 
 def _record_to_sample(record: dict[str, Any]) -> Sample:
-    prompt = _require_text(record, "prompt")
-    solution0 = _require_text(record, "solution0")
-    solution1 = _require_text(record, "solution1")
-    label_raw = record.get("label")
+    prompt = record["prompt"]
+    solution0 = record["solution0"]
+    solution1 = record["solution1"]
+    label_raw = record["label"]
 
     target_choice = "A" if label_raw == 0 else "B"
     sample_id = str(record.get("id")) if record.get("id") is not None else None
@@ -107,43 +103,80 @@ def _record_to_sample(record: dict[str, Any]) -> Sample:
     )
 
 
-def _require_text(record: dict[str, Any], field: str) -> str:
-    value = record.get(field)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"PIQA field '{field}' must be a non-empty string.")
-    return value.strip()
-
-
-def _validate_records(records: list[dict[str, Any]], path: Path) -> None:
+def _validate_and_normalize_records(
+    loaded: list[Any], path: Path
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
     malformed: list[str] = []
-    for idx, record in enumerate(records):
-        issues: list[str] = []
-        for field in ("prompt", "solution0", "solution1"):
-            value = record.get(field)
-            if not isinstance(value, str) or not value.strip():
-                issues.append(f"{field} must be a non-empty string")
+    for idx, raw_record in enumerate(loaded):
+        if not isinstance(raw_record, dict):
+            malformed.append(
+                f"idx={idx}: record must be an object, got {type(raw_record).__name__}"
+            )
+            continue
 
-        label_raw = record.get("label")
-        if label_raw not in (0, 1):
-            issues.append(f"label must be 0 or 1 (got {label_raw!r})")
-
+        issues = _record_issues(raw_record)
         if issues:
             malformed.append(
-                f"idx={idx}, id={record.get('id')!r}: " + "; ".join(issues)
+                f"idx={idx}, id={raw_record.get('id')!r}: " + "; ".join(issues)
             )
+            continue
+
+        records.append(_normalize_record(raw_record))
 
     if not malformed:
-        return
+        return records
 
     preview = malformed[:20]
     extra_count = len(malformed) - len(preview)
-    extra_suffix = f"\n... (+{extra_count} more malformed rows)" if extra_count > 0 else ""
-    message = (
-        f"Malformed PIQA rows in {path}:\n"
-        + "\n".join(preview)
-        + extra_suffix
+    extra_suffix = (
+        f"\n... (+{extra_count} more malformed rows)" if extra_count > 0 else ""
     )
+    message = f"Malformed PIQA rows in {path}:\n" + "\n".join(preview) + extra_suffix
     raise ValueError(message)
+
+
+def _record_issues(record: dict[str, Any]) -> list[str]:
+    issues: list[str] = []
+
+    for field in ("prompt", "solution0", "solution1"):
+        if _normalize_text(record.get(field)) is None:
+            issues.append(f"{field} must be a non-empty string")
+
+    label = record.get("label")
+    if label not in (0, 1):
+        issues.append(f"label must be 0 or 1 (got {label!r})")
+
+    return issues
+
+
+def _normalize_record(record: dict[str, Any]) -> dict[str, Any]:
+    prompt = _normalize_text(record.get("prompt"))
+    solution0 = _normalize_text(record.get("solution0"))
+    solution1 = _normalize_text(record.get("solution1"))
+    label = record.get("label")
+
+    if prompt is None or solution0 is None or solution1 is None or label not in (0, 1):
+        raise ValueError("Expected a validated PIQA record.")
+
+    return {
+        "id": record.get("id"),
+        "prompt": prompt,
+        "solution0": solution0,
+        "solution1": solution1,
+        "label": label,
+    }
+
+
+def _normalize_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+
+    return cleaned
 
 
 @scorer(metrics=[accuracy()])
@@ -168,18 +201,9 @@ def piqa_scorer() -> Scorer:
 
 
 def _extract_choice(text: str, solution0: str, solution1: str) -> str | None:
-    if not text:
-        return None
-
-    match = _RE_FIRST_CHOICE.search(text)
-    if match is None:
-        match = _RE_ANY_CHOICE.search(text)
-    if match is not None:
-        token = match.group(1).lower()
-        if token == "a":
-            return "A"
-        if token == "b":
-            return "B"
+    choice = _extract_letter_choice(text)
+    if choice is not None:
+        return choice
 
     normalized = _normalize_for_match(text)
     sol0 = _normalize_for_match(solution0)
@@ -191,6 +215,18 @@ def _extract_choice(text: str, solution0: str, solution1: str) -> str | None:
         return "A"
     if has_1 and not has_0:
         return "B"
+
+    return None
+
+
+def _extract_letter_choice(text: str) -> str | None:
+    if not text:
+        return None
+
+    for pattern in (_RE_FIRST_CHOICE, _RE_ANY_CHOICE):
+        match = pattern.search(text)
+        if match is not None:
+            return match.group(1).upper()
 
     return None
 

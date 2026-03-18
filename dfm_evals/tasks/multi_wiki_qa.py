@@ -109,9 +109,7 @@ def _normalize_split_name(split: str) -> str:
         return ""
     if normalized not in SPLIT_ALIASES:
         allowed = sorted(set(SPLIT_ALIASES.keys()))
-        raise ValueError(
-            f"Unsupported split '{split}'. Supported values: {allowed}"
-        )
+        raise ValueError(f"Unsupported split '{split}'. Supported values: {allowed}")
     return SPLIT_ALIASES[normalized]
 
 
@@ -125,7 +123,9 @@ def _build_public_mini_dataset(
     seed: int | None,
     limit: int | None,
 ) -> MemoryDataset:
-    records = _load_public_records(source_dataset_id=source_dataset_id, language=language)
+    records = _load_public_records(
+        source_dataset_id=source_dataset_id, language=language
+    )
     filtered_records = [record for record in records if _is_valid_public_record(record)]
     split_records = _select_mini_split_records(
         records=filtered_records,
@@ -133,34 +133,19 @@ def _build_public_mini_dataset(
         mini_split_seed=mini_split_seed,
     )
 
-    samples: list[Sample] = []
-    seen_ids: dict[str, int] = {}
-    for idx, record in enumerate(split_records):
-        record_with_id = dict(record)
-        raw_id_value = record_with_id.get("id")
-        base_id = (
-            str(raw_id_value)
-            if raw_id_value is not None and str(raw_id_value).strip()
-            else f"{language}_{split}_{idx}"
+    samples = [
+        record_to_sample(
+            record=record,
+            language=language,
+            max_answer_words=max_answer_words,
         )
-        duplicate_count = seen_ids.get(base_id, 0)
-        seen_ids[base_id] = duplicate_count + 1
-        if duplicate_count > 0:
-            record_with_id["id"] = f"{base_id}__{duplicate_count}"
-        else:
-            record_with_id["id"] = base_id
-        samples.append(
-            record_to_sample(
-                record=record_with_id,
-                language=language,
-                max_answer_words=max_answer_words,
-            )
+        for record in _records_with_unique_ids(
+            records=split_records,
+            language=language,
+            split=split,
         )
-
-    if shuffle:
-        random.Random(seed).shuffle(samples)
-    if limit is not None:
-        samples = samples[:limit]
+    ]
+    samples = _postprocess_samples(samples, shuffle=shuffle, seed=seed, limit=limit)
 
     return MemoryDataset(
         samples=samples,
@@ -192,19 +177,11 @@ def _is_valid_public_record(record: dict[str, Any]) -> bool:
     if not (MIN_NUM_CHARS_IN_QUESTION <= len(question) <= MAX_NUM_CHARS_IN_QUESTION):
         return False
 
-    answers = record.get("answers")
-    if not isinstance(answers, dict):
-        return False
-    texts = answers.get("text")
-    if isinstance(texts, str):
-        texts = [texts]
-    if not isinstance(texts, Sequence) or len(texts) == 0:
-        return False
-    first_answer = texts[0]
-    if not isinstance(first_answer, str) or not first_answer.strip():
+    raw_answer_texts = _raw_answer_texts(record)
+    if raw_answer_texts is None:
         return False
 
-    return True
+    return bool(_clean_answer_texts(raw_answer_texts))
 
 
 def _select_mini_split_records(
@@ -283,28 +260,99 @@ def _extract_answer_texts(record: dict[str, Any]) -> list[str]:
     if not isinstance(answers, dict):
         raise ValueError("Record field 'answers' must be an object.")
 
-    raw_texts = answers.get("text")
-    texts: Sequence[Any]
-    if isinstance(raw_texts, str):
-        texts = [raw_texts]
-    elif isinstance(raw_texts, Sequence):
-        texts = raw_texts
-    else:
+    raw_texts = _coerce_answer_texts(answers.get("text"))
+    if raw_texts is None:
         raise ValueError("Record field 'answers.text' must be a string or list.")
 
+    answer_texts = _clean_answer_texts(raw_texts)
+    if not answer_texts:
+        raise ValueError("Record field 'answers.text' does not contain any answers.")
+
+    return answer_texts
+
+
+def _records_with_unique_ids(
+    records: list[dict[str, Any]], language: str, split: str
+) -> list[dict[str, Any]]:
+    seen_ids: dict[str, int] = {}
+    unique_records: list[dict[str, Any]] = []
+
+    for index, record in enumerate(records):
+        base_id = _base_record_id(
+            record=record, language=language, split=split, index=index
+        )
+        duplicate_count = seen_ids.get(base_id, 0)
+        seen_ids[base_id] = duplicate_count + 1
+
+        record_with_id = dict(record)
+        if duplicate_count > 0:
+            record_with_id["id"] = f"{base_id}__{duplicate_count}"
+        else:
+            record_with_id["id"] = base_id
+
+        unique_records.append(record_with_id)
+
+    return unique_records
+
+
+def _base_record_id(
+    record: dict[str, Any], language: str, split: str, index: int
+) -> str:
+    raw_id = record.get("id")
+    if raw_id is None:
+        return f"{language}_{split}_{index}"
+
+    record_id = str(raw_id).strip()
+    if not record_id:
+        return f"{language}_{split}_{index}"
+
+    return record_id
+
+
+def _postprocess_samples(
+    samples: list[Sample],
+    *,
+    shuffle: bool,
+    seed: int | None,
+    limit: int | None,
+) -> list[Sample]:
+    if shuffle:
+        random.Random(seed).shuffle(samples)
+    if limit is not None:
+        return samples[:limit]
+    return samples
+
+
+def _raw_answer_texts(record: dict[str, Any]) -> Sequence[Any] | None:
+    answers = record.get("answers")
+    if not isinstance(answers, dict):
+        return None
+
+    return _coerce_answer_texts(answers.get("text"))
+
+
+def _coerce_answer_texts(raw_texts: Any) -> Sequence[Any] | None:
+    if isinstance(raw_texts, str):
+        return [raw_texts]
+    if isinstance(raw_texts, Sequence):
+        return raw_texts
+    return None
+
+
+def _clean_answer_texts(values: Sequence[Any]) -> list[str]:
     deduped: list[str] = []
     seen: set[str] = set()
-    for value in texts:
+
+    for value in values:
         if not isinstance(value, str):
             continue
+
         cleaned = value.strip()
         if not cleaned or cleaned in seen:
             continue
+
         deduped.append(cleaned)
         seen.add(cleaned)
-
-    if not deduped:
-        raise ValueError("Record field 'answers.text' does not contain any answers.")
 
     return deduped
 

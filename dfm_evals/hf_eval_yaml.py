@@ -41,7 +41,40 @@ def task_create_from_hf_extended(task_name: str, **kwargs: Any) -> list[Task]:
         revision = kwargs.get("revision", "main")
 
     repo_id, requested_task_id = _parse_task_spec(task_spec)
+    task_configs = _load_task_configs(
+        repo_id=repo_id,
+        revision=revision,
+        hf_hub_download=hf_hub_download,
+        entry_not_found_error=hf_errors.EntryNotFoundError,
+    )
 
+    tasks: list[Task] = []
+    for idx, task_config in enumerate(task_configs):
+        task = _build_hf_task(
+            task_name=task_name,
+            repo_id=repo_id,
+            revision=revision,
+            task_config=task_config,
+            task_index=idx,
+            total_task_count=len(task_configs),
+            requested_task_id=requested_task_id,
+        )
+        if task is not None:
+            tasks.append(task)
+
+    if len(tasks) == 0:
+        raise PrerequisiteError(f"No tasks matching '{task_name}' were found.")
+
+    return tasks
+
+
+def _load_task_configs(
+    *,
+    repo_id: str,
+    revision: str,
+    hf_hub_download: Any,
+    entry_not_found_error: type[Exception],
+) -> list[dict[str, Any]]:
     try:
         yaml_path = Path(
             hf_hub_download(
@@ -51,7 +84,7 @@ def task_create_from_hf_extended(task_name: str, **kwargs: Any) -> list[Task]:
                 revision=revision,
             )
         )
-    except hf_errors.EntryNotFoundError:
+    except entry_not_found_error:
         raise PrerequisiteError(
             f"No 'eval.yaml' file found for Hugging Face Dataset '{repo_id}'"
         ) from None
@@ -64,132 +97,152 @@ def task_create_from_hf_extended(task_name: str, **kwargs: Any) -> list[Task]:
     if not isinstance(task_configs, list) or len(task_configs) == 0:
         raise PrerequisiteError("eval.yaml does not include non-empty 'tasks' list.")
 
-    tasks: list[Task] = []
+    validated_task_configs: list[dict[str, Any]] = []
     for idx, task_config in enumerate(task_configs):
         if not isinstance(task_config, dict):
-            raise PrerequisiteError(f"Task config #{idx} in eval.yaml must be a mapping.")
-
-        task_id = task_config.get("id")
-        if len(task_configs) > 1 and not isinstance(task_id, str):
             raise PrerequisiteError(
-                "Task 'id' field is required if there are more than 1 tasks in 'eval.yaml'"
+                f"Task config #{idx} in eval.yaml must be a mapping."
             )
+        validated_task_configs.append(task_config)
 
-        if requested_task_id is not None and task_id != requested_task_id:
-            continue
+    return validated_task_configs
 
-        raw_field_spec = task_config.get("field_spec")
-        if not isinstance(raw_field_spec, dict):
-            raise PrerequisiteError(
-                f"Task '{task_id or idx}' missing required mapping field 'field_spec'."
-            )
-        field_spec = HFFieldSpec(**raw_field_spec)
 
-        filters = task_config.get("filters")
+def _build_hf_task(
+    *,
+    task_name: str,
+    repo_id: str,
+    revision: str,
+    task_config: dict[str, Any],
+    task_index: int,
+    total_task_count: int,
+    requested_task_id: str | None,
+) -> Task | None:
+    task_id = task_config.get("id")
+    task_label = _task_label(task_id, task_index)
 
-        def record_to_sample_hf(
-            record: DatasetRecord,
-            field_spec: HFFieldSpec = field_spec,
-            filters: Any = filters,
-        ) -> Sample | list[Sample]:
-            if filters is not None and not _record_matches_filter(record, filters):
-                return []
-            return _record_to_sample_hf(record, field_spec)
+    if total_task_count > 1 and not isinstance(task_id, str):
+        raise PrerequisiteError(
+            "Task 'id' field is required if there are more than 1 tasks in 'eval.yaml'"
+        )
+    if requested_task_id is not None and task_id != requested_task_id:
+        return None
 
-        dataset = hf_dataset(
-            path=repo_id,
-            revision=revision,
-            name=str(task_config.get("config", "default")),
-            split=str(task_config.get("split", "test")),
-            sample_fields=record_to_sample_hf,
+    field_spec = _build_field_spec(task_config, task_label)
+    filters = task_config.get("filters")
+    dataset = hf_dataset(
+        path=repo_id,
+        revision=revision,
+        name=str(task_config.get("config", "default")),
+        split=str(task_config.get("split", "test")),
+        sample_fields=_build_sample_fields(field_spec, filters),
+    )
+
+    if bool(task_config.get("shuffle_choices")):
+        dataset.shuffle_choices()
+
+    return Task(
+        name=f"{task_name}/{task_id}" if total_task_count > 1 else task_name,
+        dataset=dataset,
+        solver=_build_solvers(task_config),
+        scorer=_build_scorers(task_config),
+        epochs=_build_epochs(task_config, task_label),
+    )
+
+
+def _task_label(task_id: Any, task_index: int) -> str:
+    return str(task_id) if isinstance(task_id, str) and task_id else str(task_index)
+
+
+def _build_field_spec(task_config: dict[str, Any], task_label: str) -> HFFieldSpec:
+    raw_field_spec = task_config.get("field_spec")
+    if not isinstance(raw_field_spec, dict):
+        raise PrerequisiteError(
+            f"Task '{task_label}' missing required mapping field 'field_spec'."
         )
 
-        if bool(task_config.get("shuffle_choices")):
-            dataset.shuffle_choices()
+    return HFFieldSpec(**raw_field_spec)
 
-        solvers = _build_solvers(task_config)
-        scorers = _build_scorers(task_config)
 
-        epochs_raw = task_config.get("epochs", 1)
-        if not isinstance(epochs_raw, int) or epochs_raw < 1:
-            raise PrerequisiteError(
-                f"Task '{task_id or idx}' has invalid 'epochs' value: {epochs_raw}"
-            )
-        epoch_reducer = task_config.get("epoch_reducer")
-        if epoch_reducer is not None and not isinstance(epoch_reducer, str):
-            raise PrerequisiteError(
-                f"Task '{task_id or idx}' has invalid 'epoch_reducer' value."
-            )
+def _build_sample_fields(
+    field_spec: HFFieldSpec,
+    filters: Any,
+) -> Any:
+    def record_to_sample_hf(record: DatasetRecord) -> Sample | list[Sample]:
+        if filters is not None and not _record_matches_filter(record, filters):
+            return []
+        return _record_to_sample_hf(record, field_spec)
 
-        task = Task(
-            name=f"{task_name}/{task_id}" if len(task_configs) > 1 else task_name,
-            dataset=dataset,
-            solver=solvers,
-            scorer=scorers,
-            epochs=Epochs(epochs_raw, epoch_reducer),
+    return record_to_sample_hf
+
+
+def _build_epochs(task_config: dict[str, Any], task_label: str) -> Epochs:
+    epochs_raw = task_config.get("epochs", 1)
+    if not isinstance(epochs_raw, int) or epochs_raw < 1:
+        raise PrerequisiteError(
+            f"Task '{task_label}' has invalid 'epochs' value: {epochs_raw}"
         )
-        tasks.append(task)
 
-    if len(tasks) == 0:
-        raise PrerequisiteError(f"No tasks matching '{task_name}' were found.")
+    epoch_reducer = task_config.get("epoch_reducer")
+    if epoch_reducer is not None and not isinstance(epoch_reducer, str):
+        raise PrerequisiteError(
+            f"Task '{task_label}' has invalid 'epoch_reducer' value."
+        )
 
-    return tasks
+    return Epochs(epochs_raw, epoch_reducer)
 
 
 def _build_solvers(task_config: dict[str, Any]) -> list[Solver]:
-    raw_solvers = task_config.get("solvers")
-    if not isinstance(raw_solvers, list) or len(raw_solvers) == 0:
-        raise PrerequisiteError("Task config requires non-empty 'solvers' list.")
-
-    solvers: list[Solver] = []
-    for idx, raw_solver in enumerate(raw_solvers):
-        if not isinstance(raw_solver, dict):
-            raise PrerequisiteError(f"Invalid solver entry #{idx}: expected mapping.")
-        name = raw_solver.get("name")
-        if not isinstance(name, str) or name.strip() == "":
-            raise PrerequisiteError(f"Invalid solver entry #{idx}: missing 'name'.")
-        args = raw_solver.get("args", {})
-        if not isinstance(args, dict):
-            raise PrerequisiteError(f"Invalid solver entry #{idx}: 'args' must be mapping.")
-
-        solvers.append(
-            solver_from_spec(
-                SolverSpec(solver=name.strip(), args=args, args_passed=args)
-            )
-        )
-
-    return solvers
+    return [
+        solver_from_spec(SolverSpec(solver=name, args=args, args_passed=args))
+        for name, args in _named_spec_entries(task_config, "solvers")
+    ]
 
 
 def _build_scorers(task_config: dict[str, Any]) -> list[Scorer]:
-    raw_scorers = task_config.get("scorers")
-    if not isinstance(raw_scorers, list) or len(raw_scorers) == 0:
-        raise PrerequisiteError("Task config requires non-empty 'scorers' list.")
-
     # Ensure local scorer decorators execute before name resolution.
     import dfm_evals.scorers  # noqa: F401
 
-    scorers: list[Scorer] = []
-    for idx, raw_scorer in enumerate(raw_scorers):
-        if not isinstance(raw_scorer, dict):
-            raise PrerequisiteError(f"Invalid scorer entry #{idx}: expected mapping.")
-        name = raw_scorer.get("name")
-        if not isinstance(name, str) or name.strip() == "":
-            raise PrerequisiteError(f"Invalid scorer entry #{idx}: missing 'name'.")
-        args = raw_scorer.get("args", {})
-        if not isinstance(args, dict):
-            raise PrerequisiteError(f"Invalid scorer entry #{idx}: 'args' must be mapping.")
-
-        scorer_name = _resolve_scorer_name(name.strip())
-        scorers.append(
-            scorer_from_spec(
-                ScorerSpec(scorer=scorer_name),
-                task_path=None,
-                **args,
-            )
+    return [
+        scorer_from_spec(
+            ScorerSpec(scorer=_resolve_scorer_name(name)),
+            task_path=None,
+            **args,
         )
+        for name, args in _named_spec_entries(task_config, "scorers")
+    ]
 
-    return scorers
+
+def _named_spec_entries(
+    task_config: dict[str, Any], field_name: str
+) -> list[tuple[str, dict[str, Any]]]:
+    raw_entries = task_config.get(field_name)
+    if not isinstance(raw_entries, list) or len(raw_entries) == 0:
+        raise PrerequisiteError(f"Task config requires non-empty '{field_name}' list.")
+
+    entries: list[tuple[str, dict[str, Any]]] = []
+    singular_name = field_name[:-1]
+    for idx, raw_entry in enumerate(raw_entries):
+        if not isinstance(raw_entry, dict):
+            raise PrerequisiteError(
+                f"Invalid {singular_name} entry #{idx}: expected mapping."
+            )
+
+        name = raw_entry.get("name")
+        if not isinstance(name, str) or name.strip() == "":
+            raise PrerequisiteError(
+                f"Invalid {singular_name} entry #{idx}: missing 'name'."
+            )
+
+        args = raw_entry.get("args", {})
+        if not isinstance(args, dict):
+            raise PrerequisiteError(
+                f"Invalid {singular_name} entry #{idx}: 'args' must be mapping."
+            )
+
+        entries.append((name.strip(), args))
+
+    return entries
 
 
 def _parse_task_spec(task_spec: str) -> tuple[str, str | None]:
@@ -228,26 +281,11 @@ def _record_matches_filter(record: DatasetRecord, filter: Any) -> bool:
     if not isinstance(filter, dict):
         raise PrerequisiteError("Task `filters` must be a mapping.")
 
-    if "all" in filter:
-        children = filter["all"]
-        if not isinstance(children, list) or len(children) == 0:
-            raise PrerequisiteError("'all' filter must contain at least one condition.")
-        return all(_record_matches_filter(record, child) for child in children)
+    logical_result = _logical_filter_result(record, filter)
+    if logical_result is not None:
+        return logical_result
 
-    if "any" in filter:
-        children = filter["any"]
-        if not isinstance(children, list) or len(children) == 0:
-            raise PrerequisiteError("'any' filter must contain at least one condition.")
-        return any(_record_matches_filter(record, child) for child in children)
-
-    if "not" in filter:
-        return not _record_matches_filter(record, filter["not"])
-
-    column = filter.get("column")
-    op = filter.get("op")
-    value = filter.get("value")
-    if not isinstance(column, str) or not isinstance(op, str):
-        raise PrerequisiteError("Filter condition must include string 'column' and 'op'.")
+    column, op, value = _filter_condition_parts(filter)
 
     record_value = record.get(column, _MISSING)
 
@@ -266,41 +304,97 @@ def _record_matches_filter(record: DatasetRecord, filter: Any) -> bool:
     if op == "ne":
         return record_value != value
     if op == "in":
-        if not isinstance(value, (list, tuple, set)):
-            raise PrerequisiteError("Filter op 'in' requires list/tuple/set value.")
-        return record_value in value
+        return _membership_filter_result(op, record_value, value)
     if op == "not_in":
-        if not isinstance(value, (list, tuple, set)):
-            raise PrerequisiteError("Filter op 'not_in' requires list/tuple/set value.")
-        return record_value not in value
+        return _membership_filter_result(op, record_value, value)
     if op == "between":
-        if not isinstance(value, (list, tuple)) or len(value) != 2:
-            raise PrerequisiteError("Filter op 'between' requires [low, high].")
-        low, high = value
-        try:
-            return low <= record_value <= high
-        except TypeError as exc:
-            raise PrerequisiteError(
-                f"Filter op 'between' cannot compare column '{column}' "
-                f"value {record_value!r} against bounds {value!r}."
-            ) from exc
+        return _between_filter_result(column, record_value, value)
     if op == "contains":
-        if isinstance(record_value, str):
-            return isinstance(value, str) and value in record_value
-        if isinstance(record_value, (list, tuple, set)):
-            return value in record_value
-        if isinstance(record_value, dict):
-            return value in record_value
-        return False
+        return _contains_filter_result(op, record_value, value)
     if op == "not_contains":
-        if isinstance(record_value, str):
-            return isinstance(value, str) and value not in record_value
-        if isinstance(record_value, (list, tuple, set)):
-            return value not in record_value
-        if isinstance(record_value, dict):
-            return value not in record_value
-        return False
+        return _contains_filter_result(op, record_value, value)
+    if op in {"gt", "gte", "lt", "lte"}:
+        return _relational_filter_result(column, op, record_value, value)
 
+    raise PrerequisiteError(f"Unsupported filter operation: {op}")
+
+
+def _logical_filter_result(
+    record: DatasetRecord, filter: dict[str, Any]
+) -> bool | None:
+    if "all" in filter:
+        children = _filter_children(filter["all"], "all")
+        return all(_record_matches_filter(record, child) for child in children)
+
+    if "any" in filter:
+        children = _filter_children(filter["any"], "any")
+        return any(_record_matches_filter(record, child) for child in children)
+
+    if "not" in filter:
+        return not _record_matches_filter(record, filter["not"])
+
+    return None
+
+
+def _filter_children(children: Any, name: str) -> list[Any]:
+    if not isinstance(children, list) or len(children) == 0:
+        raise PrerequisiteError(f"'{name}' filter must contain at least one condition.")
+    return children
+
+
+def _filter_condition_parts(filter: dict[str, Any]) -> tuple[str, str, Any]:
+    column = filter.get("column")
+    op = filter.get("op")
+    value = filter.get("value")
+
+    if not isinstance(column, str) or not isinstance(op, str):
+        raise PrerequisiteError(
+            "Filter condition must include string 'column' and 'op'."
+        )
+
+    return column, op, value
+
+
+def _membership_filter_result(op: str, record_value: Any, value: Any) -> bool:
+    if not isinstance(value, (list, tuple, set)):
+        raise PrerequisiteError(f"Filter op '{op}' requires list/tuple/set value.")
+    if op == "in":
+        return record_value in value
+    return record_value not in value
+
+
+def _between_filter_result(column: str, record_value: Any, value: Any) -> bool:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise PrerequisiteError("Filter op 'between' requires [low, high].")
+
+    low, high = value
+    try:
+        return low <= record_value <= high
+    except TypeError as exc:
+        raise PrerequisiteError(
+            f"Filter op 'between' cannot compare column '{column}' "
+            f"value {record_value!r} against bounds {value!r}."
+        ) from exc
+
+
+def _contains_filter_result(op: str, record_value: Any, value: Any) -> bool:
+    contains = _contains_value(record_value, value)
+    if op == "contains":
+        return contains
+    return not contains
+
+
+def _contains_value(record_value: Any, value: Any) -> bool:
+    if isinstance(record_value, str):
+        return isinstance(value, str) and value in record_value
+    if isinstance(record_value, (list, tuple, set, dict)):
+        return value in record_value
+    return False
+
+
+def _relational_filter_result(
+    column: str, op: str, record_value: Any, value: Any
+) -> bool:
     try:
         if op == "gt":
             return record_value > value
@@ -308,15 +402,12 @@ def _record_matches_filter(record: DatasetRecord, filter: Any) -> bool:
             return record_value >= value
         if op == "lt":
             return record_value < value
-        if op == "lte":
-            return record_value <= value
+        return record_value <= value
     except TypeError as exc:
         raise PrerequisiteError(
             f"Filter op '{op}' cannot compare column '{column}' "
             f"value {record_value!r} against {value!r}."
         ) from exc
-
-    raise PrerequisiteError(f"Unsupported filter operation: {op}")
 
 
 def _record_to_sample_hf(record: DatasetRecord, field_spec: HFFieldSpec) -> Sample:
@@ -324,10 +415,14 @@ def _record_to_sample_hf(record: DatasetRecord, field_spec: HFFieldSpec) -> Samp
     choices = _sanitize_choices(record, field_spec.choices)
     return Sample(
         input=record[field_spec.input],
-        target=_sanitize_target(record, field_spec.target, is_choices=choices is not None),
+        target=_sanitize_target(
+            record, field_spec.target, is_choices=choices is not None
+        ),
         choices=choices,
         id=record.get(field_spec.id, None),
-        metadata=record if field_spec.metadata is None else {m: record[m] for m in field_spec.metadata},
+        metadata=record
+        if field_spec.metadata is None
+        else {m: record[m] for m in field_spec.metadata},
         sandbox=record.get(field_spec.sandbox),
         files=record.get(field_spec.files),
         setup=record.get(field_spec.setup),
