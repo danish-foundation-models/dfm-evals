@@ -1,4 +1,14 @@
-from .comet import comet
-from .gleu import compute_gleu, gleu, max_gleu_score
+from __future__ import annotations
 
-__all__ = ["comet", "gleu", "compute_gleu", "max_gleu_score"]
+from .._exports import SCORER_PACKAGE_EXPORTS, load_export
+
+__all__ = list(SCORER_PACKAGE_EXPORTS)
+
+
+def __getattr__(name: str):
+    return load_export(
+        name=name,
+        exports=SCORER_PACKAGE_EXPORTS,
+        namespace=globals(),
+        module_name="dfm_evals.scorers",
+    )

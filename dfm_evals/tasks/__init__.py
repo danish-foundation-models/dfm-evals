@@ -1,8 +1,18 @@
 """Task implementations for dfm_evals."""
 
-from .bfcl import bfcl, bfcl_da
-from .ifeval_da import ifeval_da
-from .multi_wiki_qa import multi_wiki_qa
-from .piqa import piqa
+from __future__ import annotations
 
-__all__ = ["multi_wiki_qa", "bfcl", "bfcl_da", "ifeval_da", "piqa"]
+from .._exports import REGISTRY_EXPORTS, TASK_EXPORTS, load_export
+
+__all__ = list(TASK_EXPORTS)
+
+_TASK_LAZY_EXPORTS = {name: REGISTRY_EXPORTS[name] for name in TASK_EXPORTS}
+
+
+def __getattr__(name: str):
+    return load_export(
+        name=name,
+        exports=_TASK_LAZY_EXPORTS,
+        namespace=globals(),
+        module_name="dfm_evals.tasks",
+    )

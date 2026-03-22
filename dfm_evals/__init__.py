@@ -2,27 +2,19 @@
 
 from __future__ import annotations
 
-from importlib import import_module
+from ._exports import REGISTRY_EXPORTS, TOP_LEVEL_EXPORTS, load_export
 
-__all__ = ["multi_wiki_qa", "bfcl", "bfcl_da", "ifeval_da", "gleu", "comet"]
+__all__ = list(TOP_LEVEL_EXPORTS)
 
-_LAZY_EXPORTS = {
-    "multi_wiki_qa": "dfm_evals.tasks.multi_wiki_qa:multi_wiki_qa",
-    "bfcl": "dfm_evals.tasks.bfcl.bfcl:bfcl",
-    "bfcl_da": "dfm_evals.tasks.bfcl.bfcl:bfcl_da",
-    "ifeval_da": "dfm_evals.tasks.ifeval_da:ifeval_da",
-    "gleu": "dfm_evals.scorers.gleu:gleu",
-    "comet": "dfm_evals.scorers.comet:comet",
+_TOP_LEVEL_LAZY_EXPORTS = {
+    name: REGISTRY_EXPORTS[name] for name in TOP_LEVEL_EXPORTS
 }
 
 
 def __getattr__(name: str):
-    target = _LAZY_EXPORTS.get(name)
-    if target is None:
-        raise AttributeError(f"module 'dfm_evals' has no attribute '{name}'")
-
-    module_name, attribute = target.split(":", 1)
-    module = import_module(module_name)
-    value = getattr(module, attribute)
-    globals()[name] = value
-    return value
+    return load_export(
+        name=name,
+        exports=_TOP_LEVEL_LAZY_EXPORTS,
+        namespace=globals(),
+        module_name="dfm_evals",
+    )
