@@ -18,15 +18,29 @@ def gleu(
 ) -> Scorer:
     """Scorer which computes a sentence-level GLEU score.
 
-    GLEU is computed as clipped n-gram overlap between the model answer
-    and each target reference over the n-gram range [`min_n`, `max_n`].
-    For each reference, score is:
+    This implements the sentence-level Google GLEU variant described in
+    Wu et al. (2016), not corpus-level GLEU. Inspect will aggregate the
+    per-sample scores with `mean()` and `stderr()`, which is different from
+    the corpus-level formulation that sums matches and denominators across
+    all samples before dividing.
+
+    GLEU is computed as clipped n-gram overlap between the model answer and
+    each target reference over the n-gram range [`min_n`, `max_n`]. For each
+    reference, score is:
 
         overlap / max(candidate_ngrams, reference_ngrams)
 
     which is equivalent to `min(precision, recall)` over the n-grams in
     the configured range. The final score is the maximum score over all
     provided target references.
+
+    By default, this scorer lowercases tokens and uses whitespace
+    tokenization. Callers can override that behavior with `ignore_case=False`
+    or a custom `tokenizer`.
+
+    If neither side produces any n-grams in the configured range, this scorer
+    returns `0.0`. That matches common reference behavior for the undefined
+    zero-denominator case.
 
     Args:
        answer_fn: Custom function to extract the answer from the completion
@@ -63,7 +77,7 @@ def max_gleu_score(
     max_n: int = 4,
     tokenizer: Tokenize | None = None,
 ) -> float:
-    """Compute the maximum GLEU score for one answer across references."""
+    """Compute the best sentence-level GLEU score across references."""
     _validate_ngram_range(min_n=min_n, max_n=max_n)
     if not targets:
         return 0.0
@@ -91,7 +105,7 @@ def compute_gleu(
     max_n: int = 4,
     tokenizer: Tokenize | None = None,
 ) -> float:
-    """Compute GLEU for one answer and one target reference."""
+    """Compute sentence-level GLEU for one answer and one reference."""
     _validate_ngram_range(min_n=min_n, max_n=max_n)
     answer_tokens = _tokenize(answer, ignore_case=ignore_case, tokenizer=tokenizer)
     target_tokens = _tokenize(target, ignore_case=ignore_case, tokenizer=tokenizer)
@@ -105,7 +119,7 @@ def _compute_gleu(
     target_ngrams, target_total = _all_ngrams(target_tokens, min_n=min_n, max_n=max_n)
 
     if answer_total == 0 and target_total == 0:
-        return 1.0 if answer_tokens == target_tokens else 0.0
+        return 0.0
     if answer_total == 0 or target_total == 0:
         return 0.0
 

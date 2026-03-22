@@ -25,6 +25,14 @@ def test_max_gleu_score_returns_zero_for_no_references() -> None:
     assert max_gleu_score("hello", []) == 0.0
 
 
+def test_compute_gleu_returns_zero_when_range_yields_no_ngrams() -> None:
+    assert compute_gleu("hello", "hello", min_n=2, max_n=4) == 0.0
+
+
+def test_compute_gleu_returns_zero_for_empty_strings() -> None:
+    assert compute_gleu("", "") == 0.0
+
+
 def test_compute_gleu_rejects_invalid_ngram_range() -> None:
     with pytest.raises(ValueError, match="max_n"):
         compute_gleu("hello", "hello", min_n=2, max_n=1)
