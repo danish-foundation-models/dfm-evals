@@ -39,9 +39,8 @@ def gleu(
     _validate_ngram_range(min_n=min_n, max_n=max_n)
 
     async def score(state: TaskState, target: Target) -> Score:
-        answer = (
-            answer_fn(state.output.completion) if answer_fn else state.output.completion
-        )
+        completion = state.output.completion
+        answer = completion if answer_fn is None else answer_fn(completion)
         gleu_score = max_gleu_score(
             answer,
             target.target,
@@ -66,19 +65,21 @@ def max_gleu_score(
 ) -> float:
     """Compute the maximum GLEU score for one answer across references."""
     _validate_ngram_range(min_n=min_n, max_n=max_n)
+    if not targets:
+        return 0.0
+
     answer_tokens = _tokenize(answer, ignore_case=ignore_case, tokenizer=tokenizer)
-    return max(
-        (
-            _compute_gleu(
-                answer_tokens,
-                _tokenize(target, ignore_case=ignore_case, tokenizer=tokenizer),
-                min_n=min_n,
-                max_n=max_n,
-            )
-            for target in targets
-        ),
-        default=0.0,
-    )
+    best_score = 0.0
+    for target in targets:
+        score = _compute_gleu(
+            answer_tokens,
+            _tokenize(target, ignore_case=ignore_case, tokenizer=tokenizer),
+            min_n=min_n,
+            max_n=max_n,
+        )
+        if score > best_score:
+            best_score = score
+    return best_score
 
 
 def compute_gleu(
@@ -133,10 +134,10 @@ def _ngram_counts(tokens: list[str], n: int) -> Counter[tuple[str, ...]]:
 def _tokenize(
     text: str, *, ignore_case: bool, tokenizer: Tokenize | None
 ) -> list[str]:
-    tokens = tokenizer(text) if tokenizer else text.split()
-    if ignore_case:
-        tokens = [token.casefold() for token in tokens]
-    return [token for token in tokens if token]
+    tokens = tokenizer(text) if tokenizer is not None else text.split()
+    if not ignore_case:
+        return [token for token in tokens if token]
+    return [token.casefold() for token in tokens if token]
 
 
 def _validate_ngram_range(*, min_n: int, max_n: int) -> None:
