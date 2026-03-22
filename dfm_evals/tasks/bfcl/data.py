@@ -261,13 +261,13 @@ class BFCLRecord(BaseModel):
     # - exec categories: list of strings like ["func(arg=value)"]
     # - AST categories (simple_python, etc.): list of dicts like [{"func": {"arg": [value]}}]
     ground_truth: GroundTruthType = Field(default_factory=list)
-    function: list[FunctionDoc] | None = Field(
+    function: list[FunctionDoc] = Field(
         default_factory=list
-    )  # Before pre-processingf this field could be empty
-    missed_function: dict[str, list[str]] | dict[str, list[FunctionDoc]] | None = Field(
+    )  # Before pre-processing this field can be empty.
+    missed_function: dict[str, list[str] | list[FunctionDoc]] = Field(
         default_factory=dict
-    )  # Keys are turn indices, values are function names (raw) or full docs (processed)
-    involved_classes: list[str] | None = Field(default_factory=list)
+    )  # Keys are turn indices, values are function names (raw) or full docs (processed).
+    involved_classes: list[str] = Field(default_factory=list)
     initial_config: Any = None
     turns: int = Field(ge=0)
     language: str | None = None
@@ -305,13 +305,10 @@ class BFCLRecord(BaseModel):
         """Quality assurance using category config"""
         # Single-turn validation
         if "multi_turn" not in self.category_name:
-            question_list = (
-                self.question if isinstance(self.question, list) else [self.question]
-            )
-            if len(question_list) != 1:
+            if len(self.question) != 1:
                 raise ValueError(
                     f"Single-turn samples should only have one message as the question. "
-                    f"Got {len(question_list)} messages for {self.id}"
+                    f"Got {len(self.question)} messages for {self.id}"
                 )
 
         # Simple category validation
@@ -361,15 +358,22 @@ def load_records_by_category(
     # 5. Build records with preprocessing
     records: dict[str, BFCLRecord] = {}
     for data in questions:
-        data["question"] = _normalize_question(data.get("question", []))
-        data["category_name"] = category_name
-        data["language"] = _get_language_from_category(category_name)
-        data["turns"] = _compute_turns(data.get("question", []), config)
-        if data["id"] in ground_truth_by_id:  # Add ground truth if available
-            data["ground_truth"] = _normalize_ground_truth(ground_truth_by_id[data["id"]])
+        assert isinstance(data, dict)
+        question = _normalize_question(data["question"])
+        record_data = dict(data)
+        record_data["question"] = question
+        record_data["category_name"] = category_name
+        record_data["language"] = _get_language_from_category(category_name)
+        record_data["turns"] = len(question) if config.is_multi_turn else 1
+        if config.has_ground_truth_file:
+            record_id = str(record_data["id"])
+            assert record_id in ground_truth_by_id
+            record_data["ground_truth"] = _normalize_ground_truth(
+                ground_truth_by_id[record_id]
+            )
 
         # Create BFCL record
-        record = BFCLRecord(**data)
+        record = BFCLRecord(**record_data)
         records[record.id] = record
 
     # Post-process records
@@ -401,25 +405,11 @@ def _get_language_from_category(category_name: str) -> str | None:
     """Extract programming language from category name."""
     if "java" in category_name and "javascript" not in category_name:
         return "java"
-    elif "javascript" in category_name:
+    if "javascript" in category_name:
         return "javascript"
-    elif "python" in category_name:
+    if "python" in category_name:
         return "python"
     return None
-
-
-def _compute_turns(question: Any, config: Any) -> int:
-    """Compute the number of turns based on question structure.
-
-    For multi-turn categories, the number of turns is the length of the question list.
-    For single-turn categories, it's always 1.
-    """
-    if not config.is_multi_turn:
-        return 1
-
-    if isinstance(question, list):
-        return len(question)
-    return 1
 
 
 def _normalize_question(question: Any) -> QuestionType:

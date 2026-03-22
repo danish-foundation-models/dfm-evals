@@ -4,7 +4,9 @@ Code adapted from the model handler to generate responses:
 https://github.com/ShishirPatil/gorilla/blob/main/berkeley-function-call-leaderboard/bfcl_eval/model_handler/base_handler.py
 """
 
-from typing import Any, cast, get_args
+from __future__ import annotations
+
+from typing import Any, TypedDict, cast, get_args
 
 from inspect_ai.solver import (
     Generate,
@@ -16,22 +18,38 @@ from inspect_ai.tool import ToolInfo, ToolParam, ToolParams
 from inspect_ai.util import JSONType  # type: ignore
 
 
+class BFCLParamSchema(TypedDict, total=False):
+    type: str
+    description: str
+    default: Any
+    enum: list[Any]
+    items: BFCLParamSchema
+    properties: dict[str, BFCLParamSchema]
+    additionalProperties: Any
+    required: list[str]
+
+
+class BFCLToolSchema(TypedDict):
+    name: str
+    description: str
+    parameters: BFCLParamSchema
+
+
 @solver
 def bfcl_solver() -> Solver:
     async def solve(state: TaskState, generate: Generate) -> TaskState:
-        tool_infos: list[ToolInfo] = []
-
-        for tool_spec in state.metadata["tools"]:
-            tool_info = create_tool_info_from_dict(tool_spec)
-            tool_infos.append(tool_info)
-
+        tool_specs = state.metadata["tools"]
+        assert isinstance(tool_specs, list)
+        tool_infos = [
+            create_tool_info_from_dict(tool_spec) for tool_spec in tool_specs
+        ]
         state.tools.extend(tool_infos)  # type: ignore
         return await generate(state, tool_calls="none")
 
     return solve
 
 
-def create_tool_info_from_dict(tool_dict: dict[str, Any]) -> ToolInfo:
+def create_tool_info_from_dict(tool_dict: BFCLToolSchema) -> ToolInfo:
     """
     Create a ToolInfo instance from a dictionary.
 
@@ -41,15 +59,15 @@ def create_tool_info_from_dict(tool_dict: dict[str, Any]) -> ToolInfo:
     Returns:
         ToolInfo instance
     """
-    # Create the parameters object
-    parameters = None
-    if "parameters" in tool_dict:
-        parameters = create_tool_param(tool_dict["parameters"])
+    name = tool_dict.get("name")
+    description = tool_dict.get("description")
+    parameters_dict = tool_dict.get("parameters")
+    if not isinstance(name, str) or not isinstance(description, str):
+        raise ValueError("Tool schema requires string `name` and `description`.")
+    if not isinstance(parameters_dict, dict):
+        raise ValueError("Tool schema requires a `parameters` mapping.")
 
-    if parameters is None:
-        raise ValueError(
-            f"Malformed parameter field in tool_dict - null value: {parameters}"
-        )
+    parameters = create_tool_param(parameters_dict)
     if parameters.properties is None:
         raise ValueError(
             f"Malformed parameter field in tool_dict - no parameter properties: {parameters}"
@@ -65,30 +83,28 @@ def create_tool_info_from_dict(tool_dict: dict[str, Any]) -> ToolInfo:
     )
     # Create and return the ToolInfo instance
     return ToolInfo(
-        name=tool_dict["name"],
-        description=tool_dict["description"],
+        name=name,
+        description=description,
         parameters=tool_params,
     )
 
 
-def create_tool_param(param_dict: dict[str, Any] | None) -> ToolParam | None:
-    """Helper function to create ToolParam instances recursively"""
-    if param_dict is None:
-        return None
+def create_tool_param(param_dict: BFCLParamSchema) -> ToolParam:
+    properties_dict = param_dict.get("properties")
+    if properties_dict is not None and not isinstance(properties_dict, dict):
+        raise ValueError("Tool schema `properties` must be a mapping.")
 
-    # Handle nested properties
+    items_dict = param_dict.get("items")
+    if items_dict is not None and not isinstance(items_dict, dict):
+        raise ValueError("Tool schema `items` must be a mapping.")
+
     properties = None
-    if param_dict.get("properties"):
+    if properties_dict is not None:
         properties = {
-            key: create_tool_param(value)
-            for key, value in param_dict["properties"].items()
-            if value is not None
+            key: create_tool_param(value) for key, value in properties_dict.items()
         }
 
-    # Handle array items
-    items = None
-    if param_dict.get("items"):
-        items = create_tool_param(param_dict["items"])
+    items = None if items_dict is None else create_tool_param(items_dict)
 
     return ToolParam(
         type=get_type(param_dict.get("type")),
@@ -103,23 +119,25 @@ def create_tool_param(param_dict: dict[str, Any] | None) -> ToolParam | None:
 
 
 def get_type(bfcl_type: str | None) -> JSONType | None:
-    normalized_type = bfcl_type.lower() if isinstance(bfcl_type, str) else bfcl_type
-    json_type = {
-        None: None,
-        "dict": "object",
-        "float": "number",
-        "tuple": "array",
-        "bool": "boolean",
-        # BFCL uses "any" for unconstrained values in multiple categories.
-        "any": None,
-        # Some BFCL tool schemas use title-cased primitive names.
-        "string": "string",
-    }.get(
-        normalized_type, normalized_type
-    )  # <= gives back the original value if it's not a key in the dict
-
-    if json_type is None:
+    if bfcl_type is None:
         return None
+    if not isinstance(bfcl_type, str):
+        raise ValueError(f"Invalid type: {bfcl_type}")
+
+    normalized_type = bfcl_type.lower()
+    match normalized_type:
+        case "dict":
+            json_type = "object"
+        case "float":
+            json_type = "number"
+        case "tuple":
+            json_type = "array"
+        case "bool":
+            json_type = "boolean"
+        case "any":
+            return None
+        case _:
+            json_type = normalized_type
 
     if json_type not in get_args(JSONType):
         raise ValueError(f"Invalid type: {json_type}")

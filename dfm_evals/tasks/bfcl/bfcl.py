@@ -188,13 +188,15 @@ def bfcl_da(shuffle: bool = True) -> Task:
 def bfcl_scorer() -> Scorer:
     async def score(state: TaskState, target: Target) -> Score:
         scorer_name = state.metadata.get("scorer")
-        if scorer_name == "execution":
-            return _score_execution(state)
-        if scorer_name == "ast":
-            return _score_ast(state)
-        if scorer_name == "irrelevance":
-            return _score_irrelevance(state)
-        return Score(value=INCORRECT, answer=f"Unsupported scorer: {scorer_name}")
+        match scorer_name:
+            case "execution":
+                return _score_execution(state)
+            case "ast":
+                return _score_ast(state)
+            case "irrelevance":
+                return _score_irrelevance(state)
+            case _:
+                raise ValueError(f"Unknown BFCL scorer: {scorer_name}")
 
     return score
 
@@ -220,20 +222,20 @@ def record_to_sample(
         "category_name": config.name,
         "scorer": config.matching_function,
     }
-
-    if config.matching_function == "execution":
-        formatted_target = _build_execution_target(record, metadata)
-    elif config.matching_function == "ast":
-        expected_ast_calls = _build_ast_targets(record)
-        expected_ast_calls = _finalize_expected_ast_calls(record, expected_ast_calls)
-        metadata["expected_ast_calls"] = expected_ast_calls
-        metadata["target_obj"] = {"calls": expected_ast_calls}
-        formatted_target = repr(expected_ast_calls)
-    elif config.matching_function == "irrelevance":
-        metadata["target_obj"] = {"no_tool_call": True}
-        formatted_target = "NO_TOOL_CALL"
-    else:
-        raise NotImplementedError(f"Not yet implemented: {config.name}")
+    match config.matching_function:
+        case "execution":
+            formatted_target = _build_execution_target(record, metadata)
+        case "ast":
+            expected_ast_calls = _build_ast_targets(record)
+            expected_ast_calls = _finalize_expected_ast_calls(record, expected_ast_calls)
+            metadata["expected_ast_calls"] = expected_ast_calls
+            metadata["target_obj"] = {"calls": expected_ast_calls}
+            formatted_target = repr(expected_ast_calls)
+        case "irrelevance":
+            metadata["target_obj"] = {"no_tool_call": True}
+            formatted_target = "NO_TOOL_CALL"
+        case _:
+            raise NotImplementedError(f"Not yet implemented: {config.name}")
 
     return Sample(
         id=record.id,
