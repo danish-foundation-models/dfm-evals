@@ -145,9 +145,20 @@ def _write_launch_map(tmp_path: Path) -> Path:
                 "model": "../models/contestant-a",
                 "nodes": 2,
                 "visible_devices": "0,1",
+                "safetensors_load_strategy": "lazy",
+                "trust_remote_code": True,
                 "default_chat_template_kwargs": {
                     "enable_thinking": False,
                 },
+                "extra_env": {
+                    "VLLM_MLA_DISABLE": "1",
+                },
+                "extra_vllm_args": [
+                    "--tokenizer-mode",
+                    "mistral",
+                    "--reasoning-parser",
+                    "mistral",
+                ],
             },
             "openai/model-b": {
                 "mode": "external_openai",
@@ -160,6 +171,7 @@ def _write_launch_map(tmp_path: Path) -> Path:
             "model": "../models/judge-local",
             "served_model_name": "judge-served",
             "api_key": "judge-secret",
+            "trust_remote_code": False,
             "enable_auto_tool_choice": False,
         },
     }
@@ -222,12 +234,21 @@ def test_emit_spec_shell_resolves_relative_paths_and_defaults(tmp_path: Path) ->
     assert contestant_spec["SPEC_CTX"] == "8192"
     assert contestant_spec["SPEC_GPU_MEM"] == "0.88"
     assert contestant_spec["SPEC_VISIBLE_DEVICES"] == "0,1"
+    assert contestant_spec["SPEC_SAFETENSORS_LOAD_STRATEGY"] == "lazy"
     assert (
         contestant_spec["SPEC_DEFAULT_CHAT_TEMPLATE_KWARGS_JSON"]
         == '{"enable_thinking": false}'
     )
     assert contestant_spec["SPEC_ENABLE_AUTO_TOOL_CHOICE"] == "1"
+    assert contestant_spec["SPEC_TRUST_REMOTE_CODE"] == "1"
     assert contestant_spec["SPEC_TOOL_CALL_PARSER"] == "hermes"
+    assert contestant_spec["SPEC_EXTRA_ENV_KV"] == ["VLLM_MLA_DISABLE=1"]
+    assert contestant_spec["SPEC_EXTRA_VLLM_ARGS"] == [
+        "--tokenizer-mode",
+        "mistral",
+        "--reasoning-parser",
+        "mistral",
+    ]
 
     external_spec = _parse_shell_assignments(
         module.emit_spec_shell(
@@ -256,7 +277,11 @@ def test_emit_spec_shell_resolves_relative_paths_and_defaults(tmp_path: Path) ->
     assert judge_spec["SPEC_NODES"] == "1"
     assert judge_spec["SPEC_GPU_MEM"] == "0.75"
     assert judge_spec["SPEC_API_KEY"] == "judge-secret"
+    assert judge_spec["SPEC_SAFETENSORS_LOAD_STRATEGY"] == ""
+    assert judge_spec["SPEC_TRUST_REMOTE_CODE"] == "0"
     assert judge_spec["SPEC_ENABLE_AUTO_TOOL_CHOICE"] == "0"
+    assert judge_spec["SPEC_EXTRA_ENV_KV"] == []
+    assert judge_spec["SPEC_EXTRA_VLLM_ARGS"] == []
 
 
 def test_write_runtime_config_and_emit_target_shell(tmp_path: Path) -> None:

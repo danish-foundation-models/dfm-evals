@@ -39,6 +39,57 @@ contestants:
     dp: 1
     default_chat_template_kwargs:
       enable_thinking: false
+  vllm/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16:
+    mode: local_vllm
+    model: nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16
+    tp: 8
+    dp: 1
+    default_chat_template_kwargs:
+      enable_thinking: false
+    trust_remote_code: true
+  vllm/mistralai/Mistral-Small-4-119B-2603-bf16:
+    mode: local_vllm
+    model: /flash/project_465002183/.cache/huggingface/local-upcasts/mistralai--Mistral-Small-4-119B-2603-bf16
+    tp: 8
+    dp: 1
+    gpu_mem: 0.8
+    safetensors_load_strategy: "none"
+    default_chat_template_kwargs:
+      reasoning_effort: none
+    extra_env:
+      VLLM_MLA_DISABLE: "1"
+    extra_vllm_args:
+      - --tokenizer-mode
+      - mistral
+      - --reasoning-parser
+      - mistral
+  vllm/openai/gpt-oss-120b:
+    mode: local_vllm
+    model: openai/gpt-oss-120b
+    tp: 8
+    dp: 1
+    gpu_mem: 0.8
+  vllm/zai-org/GLM-4.7:
+    mode: local_vllm
+    model: zai-org/GLM-4.7
+    nodes: 2
+    tp: 16
+    dp: 1
+    gpu_mem: 0.95
+    safetensors_load_strategy: none
+    enforce_eager: true
+    default_chat_template_kwargs:
+      enable_thinking: false
+    extra_env:
+      HF_HOME: /scratch/project_465002183/.cache/huggingface
+      HF_HUB_CACHE: /scratch/project_465002183/.cache/huggingface/hub
+      HUGGINGFACE_HUB_CACHE: /scratch/project_465002183/.cache/huggingface/hub
+      TRANSFORMERS_CACHE: /scratch/project_465002183/.cache/huggingface/transformers
+      HF_DATASETS_CACHE: /scratch/project_465002183/.cache/huggingface/datasets
+    extra_vllm_args:
+      - --reasoning-parser
+      - glm45
+      - --enable-expert-parallel
   vllm/Qwen/Qwen3.5-397B-A17B:
     mode: local_vllm
     model: Qwen/Qwen3.5-397B-A17B

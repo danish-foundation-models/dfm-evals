@@ -22,6 +22,7 @@ prompt_source:
 contestant_generate_config:
   temperature: 0.6
   max_tokens: 768
+  reasoning_effort: none
 
 batch_size: 8
 max_total_matches: 120

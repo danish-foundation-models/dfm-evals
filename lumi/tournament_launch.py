@@ -36,9 +36,13 @@ class LaunchDefaults(BaseModel):
     gpu_mem: float | None = None
     visible_devices: str | None = None
     default_chat_template_kwargs: dict[str, Any] | None = None
+    safetensors_load_strategy: str | None = None
+    trust_remote_code: bool | None = None
     enable_auto_tool_choice: bool | None = None
     tool_call_parser: str | None = None
     enforce_eager: bool | None = None
+    extra_env: dict[str, str] | None = None
+    extra_vllm_args: list[str] | None = None
 
     model_config = {
         "extra": "forbid",
@@ -61,9 +65,13 @@ class LaunchEntry(BaseModel):
     gpu_mem: float | None = None
     visible_devices: str | None = None
     default_chat_template_kwargs: dict[str, Any] | None = None
+    safetensors_load_strategy: str | None = None
+    trust_remote_code: bool | None = None
     enable_auto_tool_choice: bool | None = None
     tool_call_parser: str | None = None
     enforce_eager: bool | None = None
+    extra_env: dict[str, str] | None = None
+    extra_vllm_args: list[str] | None = None
 
     model_config = {
         "extra": "forbid",
@@ -94,9 +102,13 @@ class ResolvedLaunchEntry(BaseModel):
     gpu_mem: float | None = None
     visible_devices: str | None = None
     default_chat_template_kwargs: dict[str, Any] | None = None
+    safetensors_load_strategy: str | None = None
+    trust_remote_code: bool | None = None
     enable_auto_tool_choice: bool | None = None
     tool_call_parser: str | None = None
     enforce_eager: bool | None = None
+    extra_env: dict[str, str] | None = None
+    extra_vllm_args: list[str] | None = None
 
     model_config = {
         "extra": "forbid",
@@ -126,6 +138,12 @@ class ResolvedLaunchEntry(BaseModel):
             ):
                 raise ValueError(
                     "external_openai entries require `base_url` or `base_url_env`"
+                )
+            if self.extra_env:
+                raise ValueError("external_openai entries do not support `extra_env`")
+            if self.extra_vllm_args:
+                raise ValueError(
+                    "external_openai entries do not support `extra_vllm_args`"
                 )
         else:  # pragma: no cover
             raise ValueError(f"unsupported mode: {self.mode}")
@@ -302,11 +320,27 @@ def emit_spec_shell(
             else "",
         ),
         _shell_assign(
+            "SPEC_SAFETENSORS_LOAD_STRATEGY",
+            resolved.safetensors_load_strategy or "",
+        ),
+        _shell_assign(
+            "SPEC_TRUST_REMOTE_CODE",
+            _bool_to_flag(resolved.trust_remote_code),
+        ),
+        _shell_assign(
             "SPEC_ENABLE_AUTO_TOOL_CHOICE",
             _bool_to_flag(resolved.enable_auto_tool_choice),
         ),
         _shell_assign("SPEC_TOOL_CALL_PARSER", resolved.tool_call_parser or ""),
         _shell_assign("SPEC_ENFORCE_EAGER", _bool_to_flag(resolved.enforce_eager)),
+        _shell_array_assign(
+            "SPEC_EXTRA_ENV_KV",
+            [f"{key}={value}" for key, value in (resolved.extra_env or {}).items()],
+        ),
+        _shell_array_assign(
+            "SPEC_EXTRA_VLLM_ARGS",
+            resolved.extra_vllm_args or [],
+        ),
     ]
     return "\n".join(lines)
 

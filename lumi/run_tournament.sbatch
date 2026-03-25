@@ -493,11 +493,15 @@ start_vllm_server_from_spec() {
   local nodes="${SPEC_NODES:-1}"
   local ctx="${SPEC_CTX:-4096}"
   local gpu_mem="${SPEC_GPU_MEM:-0.92}"
+  local safetensors_load_strategy="${SPEC_SAFETENSORS_LOAD_STRATEGY:-}"
   local visible_devices="${SPEC_VISIBLE_DEVICES:-}"
   local default_chat_template_kwargs_json="${SPEC_DEFAULT_CHAT_TEMPLATE_KWARGS_JSON:-}"
+  local trust_remote_code="${SPEC_TRUST_REMOTE_CODE:-0}"
   local enable_auto_tool_choice="${SPEC_ENABLE_AUTO_TOOL_CHOICE:-0}"
   local tool_call_parser="${SPEC_TOOL_CALL_PARSER:-}"
   local enforce_eager="${SPEC_ENFORCE_EAGER:-0}"
+  local -a extra_env_kv=("${SPEC_EXTRA_ENV_KV[@]}")
+  local -a extra_vllm_args=("${SPEC_EXTRA_VLLM_ARGS[@]}")
 
   local adapter_config="$model_path/adapter_config.json"
   local adapter_weights="$model_path/adapter_model.safetensors"
@@ -525,6 +529,12 @@ start_vllm_server_from_spec() {
   local master_addr="$MASTER_ADDR"
   local world_size=0
   local required_gpus_per_node=0
+  local extra_env_exports=""
+  local extra_vllm_flag_lines=""
+  local extra_env_entry=""
+  local extra_env_key=""
+  local extra_env_value=""
+  local extra_vllm_arg=""
   local -a selected_nodes=()
   local -a readiness_curl_args=()
 
@@ -551,9 +561,21 @@ start_vllm_server_from_spec() {
   if [[ -z "$gpu_mem" ]]; then
     gpu_mem="0.92"
   fi
+  case "$safetensors_load_strategy" in
+    "")
+      safetensors_load_strategy="eager"
+      ;;
+    none)
+      safetensors_load_strategy=""
+      ;;
+  esac
   if [[ "$tool_call_parser" == "none" ]]; then
     tool_call_parser=""
   fi
+  case "$trust_remote_code" in
+    ""|0|1) ;;
+    *) die "invalid trust_remote_code for $name: $trust_remote_code" ;;
+  esac
   case "$enable_auto_tool_choice" in
     ""|0|1) ;;
     *) die "invalid enable_auto_tool_choice for $name: $enable_auto_tool_choice" ;;
@@ -562,6 +584,27 @@ start_vllm_server_from_spec() {
     ""|0|1) ;;
     *) die "invalid enforce_eager for $name: $enforce_eager" ;;
   esac
+  for extra_env_entry in "${extra_env_kv[@]}"; do
+    extra_env_key="${extra_env_entry%%=*}"
+    extra_env_value="${extra_env_entry#*=}"
+    if [[ -z "$extra_env_key" || "$extra_env_key" == "$extra_env_entry" ]]; then
+      die "invalid extra_env entry for $name: $extra_env_entry"
+    fi
+    if ! [[ "$extra_env_key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      die "invalid extra_env key for $name: $extra_env_key"
+    fi
+    case "$extra_env_key" in
+      HF_HOME|HF_HUB_CACHE|HUGGINGFACE_HUB_CACHE|TRANSFORMERS_CACHE|HF_DATASETS_CACHE|VLLM_ASSETS_CACHE)
+        if [[ -n "$extra_env_value" && "$extra_env_value" == /* ]]; then
+          append_bind_path "$extra_env_value"
+        fi
+        ;;
+    esac
+    extra_env_exports+="export ${extra_env_key}=$(printf '%q' "$extra_env_value")"$'\n'
+  done
+  for extra_vllm_arg in "${extra_vllm_args[@]}"; do
+    extra_vllm_flag_lines+="EXTRA_VLLM_FLAGS+=($(printf '%q' "$extra_vllm_arg"))"$'\n'
+  done
   if [[ "$enable_auto_tool_choice" == "1" && -z "$tool_call_parser" ]]; then
     die "$name auto tool choice enabled but tool call parser is empty"
   fi
@@ -643,7 +686,7 @@ start_vllm_server_from_spec() {
 export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
 export VLLM_PLUGINS=''
 export TORCHDYNAMO_DISABLE=1
-export NODE_RANK=\${SLURM_PROCID:-0}
+${extra_env_exports}export NODE_RANK=\${SLURM_PROCID:-0}
 if [[ -n \"\${VISIBLE_DEVICES:-}\" ]]; then
   export HIP_VISIBLE_DEVICES=\"\${VISIBLE_DEVICES}\"
   export CUDA_VISIBLE_DEVICES=\"\${VISIBLE_DEVICES}\"
@@ -677,8 +720,14 @@ EXTRA_VLLM_FLAGS=()
 if [[ -n \"\${DEFAULT_CHAT_TEMPLATE_KWARGS_JSON:-}\" ]]; then
   EXTRA_VLLM_FLAGS+=(--default-chat-template-kwargs \"\${DEFAULT_CHAT_TEMPLATE_KWARGS_JSON}\")
 fi
+if [[ \"\${TRUST_REMOTE_CODE:-0}\" == \"1\" ]]; then
+  EXTRA_VLLM_FLAGS+=(--trust-remote-code)
+fi
 if [[ \"\${ENABLE_AUTO_TOOL_CHOICE:-0}\" == \"1\" ]]; then
   EXTRA_VLLM_FLAGS+=(--enable-auto-tool-choice)
+fi
+if [[ -n \"\${SAFETENSORS_LOAD_STRATEGY:-}\" ]]; then
+  EXTRA_VLLM_FLAGS+=(--safetensors-load-strategy \"\${SAFETENSORS_LOAD_STRATEGY}\")
 fi
 if [[ -n \"\${TOOL_CALL_PARSER:-}\" ]]; then
   EXTRA_VLLM_FLAGS+=(--tool-call-parser \"\${TOOL_CALL_PARSER}\")
@@ -686,7 +735,7 @@ fi
 if [[ \"\${ENFORCE_EAGER:-0}\" == \"1\" ]]; then
   EXTRA_VLLM_FLAGS+=(--enforce-eager)
 fi
-if [[ \"\${USE_LORA_ADAPTER:-0}\" == \"1\" ]]; then
+${extra_vllm_flag_lines}if [[ \"\${USE_LORA_ADAPTER:-0}\" == \"1\" ]]; then
   EXTRA_VLLM_FLAGS+=(--enable-lora --lora-modules \"\${LORA_MODULE_SPEC}\" --max-lora-rank \"\${LORA_MAX_RANK}\")
   if [[ -n \"\${LORA_CHAT_TEMPLATE_PATH:-}\" ]]; then
     EXTRA_VLLM_FLAGS+=(--chat-template \"\${LORA_CHAT_TEMPLATE_PATH}\")
@@ -712,7 +761,6 @@ vllm serve \"\${MODEL_TAG}\" \\
   --data-parallel-size \"\${DP}\" \\
   --gpu-memory-utilization \"\${GPU_MEM}\" \\
   --max-model-len \"\${CTX}\" \\
-  --safetensors-load-strategy eager \\
   \"\${EXTRA_VLLM_FLAGS[@]}\""
 
   mkdir -p "$(dirname "$log_path")"
@@ -739,8 +787,10 @@ vllm serve \"\${MODEL_TAG}\" \\
         NODES="$nodes" \
         CTX="$ctx" \
         GPU_MEM="$gpu_mem" \
+        SAFETENSORS_LOAD_STRATEGY="$safetensors_load_strategy" \
         VISIBLE_DEVICES="$visible_devices" \
         DEFAULT_CHAT_TEMPLATE_KWARGS_JSON="$default_chat_template_kwargs_json" \
+        TRUST_REMOTE_CODE="${trust_remote_code:-0}" \
         USE_LORA_ADAPTER="$use_lora_adapter" \
         LORA_MODULE_SPEC="$lora_module_spec" \
         LORA_MAX_RANK="$lora_max_rank" \
@@ -777,8 +827,10 @@ vllm serve \"\${MODEL_TAG}\" \\
         NODES="$nodes" \
         CTX="$ctx" \
         GPU_MEM="$gpu_mem" \
+        SAFETENSORS_LOAD_STRATEGY="$safetensors_load_strategy" \
         VISIBLE_DEVICES="$visible_devices" \
         DEFAULT_CHAT_TEMPLATE_KWARGS_JSON="$default_chat_template_kwargs_json" \
+        TRUST_REMOTE_CODE="${trust_remote_code:-0}" \
         USE_LORA_ADAPTER="$use_lora_adapter" \
         LORA_MODULE_SPEC="$lora_module_spec" \
         LORA_MAX_RANK="$lora_max_rank" \
