@@ -8,12 +8,16 @@ sets:
           - refusal_judge={{judge_model}}
           - -T
           - semantic_judge={{judge_model}}
+          - --max-tokens
+          - "512"
       - name: inspect_evals/agentharm_benign
         args:
           - -T
           - refusal_judge={{judge_model}}
           - -T
           - semantic_judge={{judge_model}}
+          - --max-tokens
+          - "512"
       - name: inspect_evals/agentdojo
         args:
           - -T
@@ -40,6 +44,8 @@ sets:
           - refusal_judge={{judge_model}}
           - -T
           - semantic_judge={{judge_model}}
+          - --max-tokens
+          - "512"
           - --limit
           - "20"
       - name: inspect_evals/simpleqa_verified
