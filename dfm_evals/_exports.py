@@ -3,6 +3,7 @@ from __future__ import annotations
 from importlib import import_module
 
 REGISTRY_EXPORTS = {
+    "danske_talemaader": "dfm_evals.tasks.danske_talemaader:danske_talemaader",
     "multi_wiki_qa": "dfm_evals.tasks.multi_wiki_qa:multi_wiki_qa",
     "gec_dala": "dfm_evals.tasks.gec_dala:gec_dala",
     "bfcl": "dfm_evals.tasks.bfcl.bfcl:bfcl",
@@ -11,15 +12,18 @@ REGISTRY_EXPORTS = {
     "piqa": "dfm_evals.tasks.piqa:piqa",
     "gleu": "dfm_evals.scorers.gleu:gleu",
     "comet": "dfm_evals.scorers.comet:comet",
+    "llm_judge": "dfm_evals.scorers.llm_judge:llm_judge",
 }
 
 TOP_LEVEL_EXPORTS = (
+    "danske_talemaader",
     "multi_wiki_qa",
     "bfcl",
     "bfcl_da",
     "ifeval_da",
     "gleu",
     "comet",
+    "llm_judge",
 )
 
 TASK_EXPORTS = tuple(
