@@ -88,6 +88,14 @@ printf -v REPO_ROOT_Q '%q' "$REPO_ROOT"
 
 INSTALL_CMD="set -euo pipefail
 source /overlay/venv/vllm-min/bin/activate
+export PIP_USER=0
+unset PYTHONUSERBASE
+export XDG_CACHE_HOME=/overlay/cache
+export PIP_CACHE_DIR=/overlay/cache/pip
+export UV_CACHE_DIR=/overlay/cache/uv
+export TMPDIR=/overlay/cache/tmp
+export HOME=/overlay/cache/home
+mkdir -p \"\$XDG_CACHE_HOME\" \"\$PIP_CACHE_DIR\" \"\$UV_CACHE_DIR\" \"\$TMPDIR\" \"\$HOME\"
 cd ${REPO_ROOT_Q}
 python -m pip install --no-user -U -e ${INSTALL_TARGET_Q}"
 

@@ -37,7 +37,12 @@ DFM_EVALS_OPENAI_BASE_URL=${DFM_EVALS_OPENAI_BASE_URL:-${OPENAI_BASE_URL:-}}
 JUDGE_MODEL_AUTO=${JUDGE_MODEL_AUTO:-0}
 DFM_EVALS_SUITE=${DFM_EVALS_SUITE:-fundamentals}
 DFM_EVALS_SUITES_FILE=${DFM_EVALS_SUITES_FILE:-}
-DFM_EVALS_LIMIT=${DFM_EVALS_LIMIT:-20}
+DFM_EVALS_LIMIT=${DFM_EVALS_LIMIT-20}
+case "${DFM_EVALS_LIMIT}" in
+  none|off|all)
+    DFM_EVALS_LIMIT=""
+    ;;
+esac
 DFM_EVALS_MODAL_ENABLE_OUTPUT=${DFM_EVALS_MODAL_ENABLE_OUTPUT:-0}
 DFM_EVALS_TEMPERATURE=${DFM_EVALS_TEMPERATURE:-0}
 DFM_EVALS_EXTRA_ARGS=${DFM_EVALS_EXTRA_ARGS:-}
@@ -665,6 +670,11 @@ trap cleanup EXIT
 
 [[ -f "$SIF" ]] || die "SIF not found: $SIF"
 [[ -d "$OVERLAY_DIR/venv/vllm-min" ]] || die "overlay venv missing: $OVERLAY_DIR/venv/vllm-min"
+if [[ -n "$DFM_EVALS_SUITES_FILE" ]]; then
+  DFM_EVALS_SUITES_FILE="$(readlink -f "$DFM_EVALS_SUITES_FILE" 2>/dev/null || true)"
+  [[ -n "$DFM_EVALS_SUITES_FILE" ]] || die "unable to resolve suites file path"
+  [[ -f "$DFM_EVALS_SUITES_FILE" ]] || die "suites file not found: $DFM_EVALS_SUITES_FILE"
+fi
 
 SING_BIND_ARGS=(
   -B "$BASE_DIR:$LAIFS_APPL_DIR"
@@ -685,6 +695,12 @@ if [[ "$USE_LORA_ADAPTER" == "1" && -d "$LORA_ADAPTER_PATH" ]]; then
 fi
 if [[ "$JUDGE_USE_LORA_ADAPTER" == "1" && -d "$JUDGE_LORA_ADAPTER_PATH" ]]; then
   SING_BIND_ARGS+=(-B "$JUDGE_LORA_ADAPTER_PATH:$JUDGE_LORA_ADAPTER_PATH")
+fi
+if [[ -n "$DFM_EVALS_SUITES_FILE" ]]; then
+  DFM_EVALS_SUITES_DIR="$(dirname "$DFM_EVALS_SUITES_FILE")"
+  if [[ "$DFM_EVALS_SUITES_DIR" != "$REPO_ROOT"* ]]; then
+    SING_BIND_ARGS+=(-B "$DFM_EVALS_SUITES_DIR:$DFM_EVALS_SUITES_DIR")
+  fi
 fi
 
 mkdir -p \

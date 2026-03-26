@@ -24,6 +24,7 @@ LAIFS_APPL_DIR=/appl/local/laifs
 
 : "${HF_HUB_VERSION:=1.4.1}"
 : "${TOKENIZERS_VERSION:=0.22.2}"
+: "${PYTORCH_WHEEL_INDEX:=https://download.pytorch.org/whl}"
 : "${PYTORCH_ROCM_ARCH:=gfx90a}"
 : "${MAX_JOBS:=64}"
 
@@ -46,7 +47,7 @@ fi
 
 export VLLM_REPO VLLM_REF
 export TRANSFORMERS_FROM_SOURCE TRANSFORMERS_REPO TRANSFORMERS_REF TRANSFORMERS_VERSION
-export HF_HUB_VERSION TOKENIZERS_VERSION
+export HF_HUB_VERSION TOKENIZERS_VERSION PYTORCH_WHEEL_INDEX
 export PYTORCH_ROCM_ARCH MAX_JOBS
 
 singularity exec --rocm \
@@ -66,18 +67,68 @@ export PIP_USER=0
 unset PYTHONUSERBASE
 export XDG_CACHE_HOME=/overlay/cache
 export PIP_CACHE_DIR=/overlay/cache/pip
+export UV_CACHE_DIR=/overlay/cache/uv
 export TRITON_CACHE_DIR=/overlay/cache/triton
 export TORCHINDUCTOR_CACHE_DIR=/overlay/cache/torchinductor
 export PYTORCH_KERNEL_CACHE_PATH=/overlay/cache/torch-kernels
-mkdir -p "$XDG_CACHE_HOME" "$PIP_CACHE_DIR" "$TRITON_CACHE_DIR" "$TORCHINDUCTOR_CACHE_DIR" "$PYTORCH_KERNEL_CACHE_PATH"
+export HF_HOME=/overlay/cache/huggingface
+export HF_HUB_CACHE="${HF_HOME%/}/hub"
+export TRANSFORMERS_CACHE="${HF_HOME%/}/transformers"
+export HF_DATASETS_CACHE="${HF_HOME%/}/datasets"
+export TMPDIR=/overlay/cache/tmp
+export HOME=/overlay/cache/home
+mkdir -p "$XDG_CACHE_HOME" "$PIP_CACHE_DIR" "$UV_CACHE_DIR" \
+  "$TRITON_CACHE_DIR" "$TORCHINDUCTOR_CACHE_DIR" "$PYTORCH_KERNEL_CACHE_PATH" \
+  "$HF_HOME" "$HF_HUB_CACHE" "$TRANSFORMERS_CACHE" "$HF_DATASETS_CACHE" \
+  "$TMPDIR" "$HOME"
 
 python -m pip install --no-user -U pip 'setuptools>=79,<80' wheel ninja 'pybind11>=2.13,<3' 'cmake<4.0.0'
+
+BASE_TORCH_VERSION="$(python - <<'PY'
+import importlib.metadata as md
+print(md.version("torch"))
+PY
+)"
+BASE_PYTORCH_TRITON_VERSION="$(python - <<'PY'
+import importlib.metadata as md
+print(md.version("pytorch-triton-rocm"))
+PY
+)"
+BASE_PYTORCH_TRITON_SOURCE="$(python - <<'PY'
+import json
+from pathlib import Path
+import importlib.metadata as md
+
+dist = md.distribution("pytorch-triton-rocm")
+direct_url = Path(dist._path) / "direct_url.json"
+if direct_url.is_file():
+    print(json.loads(direct_url.read_text())["url"])
+else:
+    print(f"version:{dist.version}")
+PY
+)"
+echo "+ Base torch: ${BASE_TORCH_VERSION}"
+echo "+ Base pytorch-triton-rocm: ${BASE_PYTORCH_TRITON_VERSION}"
+if [[ "$BASE_PYTORCH_TRITON_SOURCE" == version:* ]]; then
+  python -m pip install --no-user -U --force-reinstall --no-deps \
+    --index-url "${PYTORCH_WHEEL_INDEX}" \
+    "pytorch-triton-rocm==${BASE_PYTORCH_TRITON_SOURCE#version:}"
+else
+  echo "+ Base pytorch-triton-rocm wheel: ${BASE_PYTORCH_TRITON_SOURCE}"
+  python -m pip install --no-user -U --force-reinstall --no-deps \
+    "${BASE_PYTORCH_TRITON_SOURCE}"
+fi
 
 # Keep these explicit because transformers source currently needs newer hub
 # than the base LAIF image provides.
 python -m pip install --no-user -U \
   "huggingface_hub==${HF_HUB_VERSION}" \
   "tokenizers==${TOKENIZERS_VERSION}"
+
+# We install vLLM itself with --no-deps below, so any runtime deps not already
+# satisfied by the base image need to be layered explicitly here. Newer
+# transformers/vLLM Gemma 3 paths expect ReasoningEffort from mistral_common.
+python -m pip install --no-user -U "mistral_common[image]>=1.10.0"
 
 if [[ "${TRANSFORMERS_FROM_SOURCE}" == "1" ]]; then
   if [[ ! -d /overlay/src/transformers/.git ]]; then
@@ -111,13 +162,18 @@ python -m pip install --no-user -e . --no-deps --no-build-isolation
 
 python - <<'PY'
 import torch
+import triton
 import transformers
 import vllm
 import vllm._C  # noqa: F401
+import importlib.metadata as md
 from transformers import AutoConfig
 from vllm.transformers_utils.config import get_config
 
 print("torch:", torch.__version__)
+print("pytorch-triton-rocm:", md.version("pytorch-triton-rocm"))
+print("triton:", triton.__version__)
+print("triton path:", triton.__file__)
 print("transformers:", transformers.__version__)
 print("transformers path:", transformers.__file__)
 print("vllm:", vllm.__version__)
