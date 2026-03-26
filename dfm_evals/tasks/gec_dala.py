@@ -52,7 +52,11 @@ def gec_dala(
     shuffle: bool = False,
     seed: int | None = None,
     limit: int | None = None,
+    preferred_metric: str | None = None,
 ) -> Task:
+    # Exporters can read this from recorded task_args to override display defaults.
+    _ = preferred_metric
+
     if max_gen_toks < 1:
         raise ValueError("`max_gen_toks` must be >= 1.")
 

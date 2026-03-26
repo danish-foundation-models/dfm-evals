@@ -490,6 +490,86 @@ def test_export_inspect_logs_overwrites_stable_paths_on_rerun(
     assert first_instance_rows == second_instance_rows
 
 
+def test_extract_inspect_results_marks_default_preferred_metric_for_gec_dala() -> None:
+    modules = _modules()
+    eee_export_module = modules["eee_export_module"]
+    eval_log = types.SimpleNamespace(
+        results=types.SimpleNamespace(
+            scores=[
+                types.SimpleNamespace(
+                    name="gleu",
+                    params={},
+                    metrics={"mean": types.SimpleNamespace(name="mean", value=0.42)},
+                ),
+                types.SimpleNamespace(
+                    name="exact",
+                    params={},
+                    metrics={"mean": types.SimpleNamespace(name="mean", value=0.18)},
+                ),
+            ]
+        ),
+        samples=[types.SimpleNamespace(id="sample-1")],
+    )
+
+    results = eee_export_module._extract_inspect_results(
+        eval_log=eval_log,
+        task_name="gec_dala",
+        source_data={"dataset_name": "demo", "source_type": "other"},
+        evaluation_timestamp="1234.0",
+        generation_config=None,
+        task_args={},
+    )
+    by_name = {result["evaluation_name"]: result for result in results}
+
+    assert (
+        by_name["gec_dala/gleu/mean"]["metric_config"]["additional_details"][
+            "preferred_for_display"
+        ]
+        == "true"
+    )
+    assert "additional_details" not in by_name["gec_dala/exact/mean"]["metric_config"]
+
+
+def test_extract_inspect_results_prefers_explicit_metric_override_over_default() -> None:
+    modules = _modules()
+    eee_export_module = modules["eee_export_module"]
+    eval_log = types.SimpleNamespace(
+        results=types.SimpleNamespace(
+            scores=[
+                types.SimpleNamespace(
+                    name="gleu",
+                    params={},
+                    metrics={"mean": types.SimpleNamespace(name="mean", value=0.42)},
+                ),
+                types.SimpleNamespace(
+                    name="exact",
+                    params={},
+                    metrics={"mean": types.SimpleNamespace(name="mean", value=0.18)},
+                ),
+            ]
+        ),
+        samples=[types.SimpleNamespace(id="sample-1")],
+    )
+
+    results = eee_export_module._extract_inspect_results(
+        eval_log=eval_log,
+        task_name="gec_dala",
+        source_data={"dataset_name": "demo", "source_type": "other"},
+        evaluation_timestamp="1234.0",
+        generation_config=None,
+        task_args={"preferred_metric": "exact"},
+    )
+    by_name = {result["evaluation_name"]: result for result in results}
+
+    assert (
+        by_name["gec_dala/exact/mean"]["metric_config"]["additional_details"][
+            "preferred_for_display"
+        ]
+        == "true"
+    )
+    assert "additional_details" not in by_name["gec_dala/gleu/mean"]["metric_config"]
+
+
 def test_cli_eee_tournament_dispatches(tmp_path: Path, monkeypatch, capsys) -> None:
     modules = _modules()
     cli_module = modules["cli_module"]

@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 EEE_DATA_ROOT_HOST=${EEE_DATA_ROOT_HOST:-$REPO_ROOT/logs/every_eval_ever/data}
 LATEST_WINDOW_SECONDS=${LATEST_WINDOW_SECONDS:-120}
-RESULTS_TABLE_WIDTH=${RESULTS_TABLE_WIDTH:-140}
+RESULTS_TABLE_WIDTH=${RESULTS_TABLE_WIDTH:-160}
 
 SELECTOR="latest"
 SELECTOR_SET=0
@@ -45,7 +45,7 @@ View options:
 Environment overrides:
   EEE_DATA_ROOT_HOST     Host EEE data root (default: ./logs/every_eval_ever/data)
   LATEST_WINDOW_SECONDS  Window for --latest selection by file mtime (default: 120)
-  RESULTS_TABLE_WIDTH    Preferred rich table width for --format table (default: 140)
+  RESULTS_TABLE_WIDTH    Preferred rich table width for --format table (default: 160)
 
 Examples:
   ./lumi/results_table.sh --latest
@@ -425,6 +425,7 @@ def row_from_eval_result(record, eval_result, path, file_ts):
     source_data = eval_result.get("source_data") or {}
     source_data_details = source_data.get("additional_details") or {}
     metric_config = eval_result.get("metric_config") or {}
+    metric_config_details = metric_config.get("additional_details") or {}
     uncertainty = score_details.get("uncertainty") or {}
 
     evaluation_name = str(eval_result.get("evaluation_name") or "")
@@ -469,6 +470,12 @@ def row_from_eval_result(record, eval_result, path, file_ts):
 
     model = model_info.get("id") or model_info.get("name") or "-"
     reported_model = model_info.get("name") or model
+    preferred_for_display = str(metric_config_details.get("preferred_for_display") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
     return {
         "run": run,
@@ -483,6 +490,7 @@ def row_from_eval_result(record, eval_result, path, file_ts):
         "model": model,
         "reported_model": reported_model,
         "evaluation_id": evaluation_id,
+        "preferred_for_display": preferred_for_display,
     }
 
 
@@ -577,7 +585,7 @@ if not compare_models:
         ("value", "Value", 6, "right"),
         ("n", "N", 4, "right"),
         ("total", "Total", 5, "right"),
-        ("model", "Model", 58, "left"),
+        ("model", "Model", 72, "left"),
     ]
     display_rows = []
     for row in rows:
@@ -617,16 +625,23 @@ combos_by_task = {}
 for row in latest_rows:
     combos_by_task.setdefault(row["task"], set()).add((row["scorer"], row["metric"]))
 
+preferred_combo_keys = {
+    (row["task"], row["scorer"], row["metric"])
+    for row in latest_rows
+    if row.get("preferred_for_display")
+}
+
 
 def combo_rank(task: str, combo: tuple[str, str]):
     scorer, metric = combo
+    preferred_pri = 0 if (task, scorer, metric) in preferred_combo_keys else 1
     metric_pri = preferred_rank.get(metric, len(preferred_rank) + 100)
     coverage = 0
     for model in models:
         value = value_by_key.get((model, task, scorer, metric))
         if value is not None:
             coverage += 1
-    return (metric_pri, -coverage, scorer, metric)
+    return (preferred_pri, metric_pri, -coverage, scorer, metric)
 
 
 def unique_model_labels(model_names: list[str]) -> dict[str, str]:
@@ -749,7 +764,7 @@ if fmt == "csv":
     raise SystemExit(0)
 
 model_labels = unique_model_labels(models)
-columns = [("model", "Model", 42, "left")]
+columns = [("model", "Model", 56, "left")]
 short_col_headers = unique_compact_labels([base for _k, base, _r in col_defs], max_len=6)
 for (col_key, _base, _source_row), header in zip(col_defs, short_col_headers):
     columns.append((col_key, header, 6, "right"))

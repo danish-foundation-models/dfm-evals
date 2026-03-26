@@ -42,6 +42,17 @@ LOWER_IS_BETTER_HINTS = (
 )
 CORRECT_TEXT_LABELS = {"C", "CORRECT", "TRUE", "PASS", "YES"}
 INCORRECT_TEXT_LABELS = {"I", "INCORRECT", "FALSE", "FAIL", "NO"}
+DEFAULT_PREFERRED_INSPECT_METRICS = {
+    "gec_dala": {
+        "scorer": "gleu",
+        "metric": "mean",
+    }
+}
+PREFERRED_METRIC_TASK_ARG_KEYS = (
+    "preferred_metric",
+    "primary_metric",
+    "preferred_scorer",
+)
 
 
 def _compact(data: Any) -> Any:
@@ -344,6 +355,61 @@ def _parse_model_info(
 def _infer_lower_is_better(metric_name: str) -> bool:
     lowered = metric_name.lower()
     return any(hint in lowered for hint in LOWER_IS_BETTER_HINTS)
+
+
+def _parse_preferred_metric_selector(value: Any) -> dict[str, str] | None:
+    if not isinstance(value, str):
+        return None
+
+    text = value.strip().lower()
+    if not text:
+        return None
+
+    for delimiter in ("/", ":"):
+        if delimiter in text:
+            scorer, metric = text.split(delimiter, 1)
+            scorer = scorer.strip()
+            metric = metric.strip()
+            if scorer and metric:
+                return {
+                    "scorer": scorer,
+                    "metric": metric,
+                }
+
+    return {"scorer": text}
+
+
+def _preferred_inspect_metric_selector(
+    *,
+    task_name: str,
+    task_args: Mapping[str, Any] | None,
+) -> dict[str, str] | None:
+    task_args_map = _as_mapping(task_args)
+    for key in PREFERRED_METRIC_TASK_ARG_KEYS:
+        selector = _parse_preferred_metric_selector(task_args_map.get(key))
+        if selector is not None:
+            return selector
+
+    default_selector = DEFAULT_PREFERRED_INSPECT_METRICS.get(task_name)
+    return dict(default_selector) if default_selector is not None else None
+
+
+def _is_preferred_inspect_metric(
+    *,
+    selector: Mapping[str, Any] | None,
+    scorer_name: str,
+    metric_name: str,
+) -> bool:
+    if not selector:
+        return False
+
+    scorer = str(selector.get("scorer", "")).strip().lower()
+    metric = str(selector.get("metric", "")).strip().lower()
+    if scorer and scorer != scorer_name.strip().lower():
+        return False
+    if metric and metric != metric_name.strip().lower():
+        return False
+    return True
 
 
 def _build_source_metadata(
@@ -958,10 +1024,15 @@ def _extract_inspect_results(
     source_data: Mapping[str, Any],
     evaluation_timestamp: str | None,
     generation_config: Mapping[str, Any] | None,
+    task_args: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     results = getattr(eval_log, "results", None)
     scorers = list(getattr(results, "scores", []) or [])
     sample_count = len(getattr(eval_log, "samples", []) or [])
+    preferred_metric_selector = _preferred_inspect_metric_selector(
+        task_name=task_name,
+        task_args=task_args,
+    )
 
     evaluation_results: list[dict[str, Any]] = []
     for scorer in scorers:
@@ -1029,6 +1100,15 @@ def _extract_inspect_results(
                 "min_score": min(0.0, metric_value),
                 "max_score": max(1.0, metric_value),
                 "llm_scoring": llm_scoring,
+                "additional_details": (
+                    {"preferred_for_display": "true"}
+                    if _is_preferred_inspect_metric(
+                        selector=preferred_metric_selector,
+                        scorer_name=scorer_name,
+                        metric_name=metric_name,
+                    )
+                    else None
+                ),
             }
 
             result = _compact(
@@ -1190,6 +1270,7 @@ def export_inspect_logs(
             source_data=source_data,
             evaluation_timestamp=evaluation_timestamp,
             generation_config=generation_config,
+            task_args=getattr(eval_spec, "task_args", None),
         )
 
         if len(evaluation_results) == 0:
