@@ -50,6 +50,7 @@ uv sync --group dev
 Optional extras:
 
 - `uv sync --extra comet` for COMET-related dependencies
+- `uv sync --extra ifeval` for the local `dfm_evals/ifeval-da` task used by the `fundamentals` suite
 - `uv sync --extra harbor` for `inspect-harbor` tasks on Python 3.12+
 - `uv sync --extra sandboxes` for compose-aware sandbox providers on Python 3.12+
 

@@ -31,7 +31,10 @@ EOF
 # 2) Build overlay (first time or after runtime updates)
 ./lumi/build_overlay_minimal.sh
 
-# 3) Submit fundamentals suite (default: gemma target + judge)
+# 3) Install/update dfm-evals in the overlay with task deps required by fundamentals
+./lumi/install_overlay_dfm_evals.sh --extras ifeval
+
+# 4) Submit fundamentals suite (default: gemma target + judge)
 ./lumi/submit.sh --limit 100
 ```
 
@@ -50,6 +53,9 @@ Notes:
   That defaults to `pip install -e . --no-deps`.
 - Use `--extras harbor,sandboxes` when you need `inspect_harbor` and
   `inspect_sandboxes` present in the overlay. That resolves dependencies.
+- Use `--extras ifeval` when you want the `fundamentals` suite or the local
+  `dfm_evals/ifeval-da` task. That installs the optional
+  `instruction_following_eval` dependency.
 - Do not run `<OVERLAY_DIR>/venv/vllm-min/bin/pip` directly from the host. The
   wrapper points at `/overlay/...` and only works from inside the container.
 - The helper binds the repo into the container at the same absolute path the
