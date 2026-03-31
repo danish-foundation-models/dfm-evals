@@ -10,5 +10,8 @@ _logs/
 logs/
 gorilla/
 .deferred/
+overlay_vllm_minimal*/
+dfm-evals-vllm-suite-*.out
+dfm-evals-vllm-suite-*.err
 
 .vscode/

@@ -84,7 +84,11 @@ SERVER_START_STEP=${SERVER_START_STEP:-5}
 
 LORA_MAX_RANK_OVERRIDE=${LORA_MAX_RANK_OVERRIDE:-}
 
-HF_HOME=${HF_HOME:-/flash/project_465002183/.cache/huggingface/}
+HF_HOME_HOST=${HF_HOME:-/flash/project_465002183/.cache/huggingface/}
+HF_HOME_HOST=${HF_HOME_HOST%/}
+HF_HOME_CONTAINER=/hf-home
+mkdir -p "$HF_HOME_HOST"
+HF_HOME_HOST="$(readlink -f "$HF_HOME_HOST" 2>/dev/null || printf '%s' "$HF_HOME_HOST")"
 SLURM_JOB_ID_SAFE=${SLURM_JOB_ID:-manual}
 DFM_EVALS_RUN_ROOT=${DFM_EVALS_RUN_ROOT:-$REPO_ROOT/logs/evals-runs}
 DFM_EVALS_LOG_ROOT=${DFM_EVALS_LOG_ROOT:-$REPO_ROOT/logs/evals-logs}
@@ -421,6 +425,67 @@ if [[ -z "$DFM_EVALS_EEE_OUTPUT_DIR" ]]; then
   DFM_EVALS_EEE_OUTPUT_DIR="${REPO_ROOT}/logs/every_eval_ever/data"
 fi
 
+normalize_tokenizer_dir() {
+  local source_dir="$1"
+  local normalized_dir="$2"
+
+  [[ -d "$source_dir" ]] || die "tokenizer dir not found: $source_dir"
+  mkdir -p "$normalized_dir"
+  cp -a "$source_dir"/. "$normalized_dir"/
+
+  if [[ -f "$normalized_dir/tokenizer_config.json" ]]; then
+    TOKENIZER_CONFIG_PATH="$normalized_dir/tokenizer_config.json" python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+path = Path(os.environ["TOKENIZER_CONFIG_PATH"])
+with path.open("r", encoding="utf-8") as f:
+    cfg = json.load(f)
+
+extra = cfg.get("extra_special_tokens")
+if isinstance(extra, list):
+    existing = cfg.get("additional_special_tokens")
+    if isinstance(existing, list):
+        merged = list(existing)
+    elif isinstance(existing, tuple):
+        merged = list(existing)
+    elif existing in (None, ""):
+        merged = []
+    else:
+        merged = [existing]
+
+    for token in extra:
+        if token not in merged:
+            merged.append(token)
+
+    cfg["additional_special_tokens"] = merged
+
+    model_specific = cfg.get("model_specific_special_tokens")
+    if isinstance(model_specific, dict):
+        cfg["extra_special_tokens"] = model_specific
+    else:
+        cfg.pop("extra_special_tokens", None)
+
+with path.open("w", encoding="utf-8") as f:
+    json.dump(cfg, f, ensure_ascii=False, indent=2)
+    f.write("\n")
+PY
+  fi
+}
+
+if [[ -n "$LORA_TOKENIZER_PATH" ]]; then
+  TARGET_NORMALIZED_TOKENIZER_DIR="${DFM_EVALS_RUN_DIR}/_normalized_tokenizers/target"
+  normalize_tokenizer_dir "$LORA_TOKENIZER_PATH" "$TARGET_NORMALIZED_TOKENIZER_DIR"
+  LORA_TOKENIZER_PATH="$TARGET_NORMALIZED_TOKENIZER_DIR"
+fi
+
+if [[ -n "$JUDGE_LORA_TOKENIZER_PATH" ]]; then
+  JUDGE_NORMALIZED_TOKENIZER_DIR="${DFM_EVALS_RUN_DIR}/_normalized_tokenizers/judge"
+  normalize_tokenizer_dir "$JUDGE_LORA_TOKENIZER_PATH" "$JUDGE_NORMALIZED_TOKENIZER_DIR"
+  JUDGE_LORA_TOKENIZER_PATH="$JUDGE_NORMALIZED_TOKENIZER_DIR"
+fi
+
 build_model_info_overrides() {
   local -n out_json_ref=$1
   out_json_ref="$(
@@ -508,7 +573,7 @@ if [[ -n "${ROCR_VISIBLE_DEVICES:-}" && -z "${HIP_VISIBLE_DEVICES:-}" ]]; then
   export HIP_VISIBLE_DEVICES="${ROCR_VISIBLE_DEVICES}"
 fi
 unset ROCR_VISIBLE_DEVICES
-export HF_HOME="__HF_HOME__"
+export HF_HOME="__HF_HOME_CONTAINER__"
 export HF_HUB_CACHE="${HF_HOME%/}/hub"
 export TRANSFORMERS_CACHE="${HF_HOME%/}/transformers"
 export HF_DATASETS_CACHE="${HF_HOME%/}/datasets"
@@ -516,7 +581,8 @@ EOC
 }
 
 render_env() {
-  container_env_prefix | sed "s|__HF_HOME__|$HF_HOME|g"
+  container_env_prefix \
+    | sed "s|__HF_HOME_CONTAINER__|$HF_HOME_CONTAINER|g"
 }
 
 start_vllm_server() {
@@ -680,6 +746,7 @@ SING_BIND_ARGS=(
   -B "$BASE_DIR:$LAIFS_APPL_DIR"
   -B "$OVERLAY_DIR:/overlay"
   -B "$REPO_ROOT:$REPO_ROOT"
+  -B "$HF_HOME_HOST:$HF_HOME_CONTAINER"
 )
 if [[ -d /flash ]]; then
   SING_BIND_ARGS+=(-B /flash:/flash)
@@ -888,7 +955,8 @@ if [[ "$JUDGE_USE_LORA_ADAPTER" == "1" ]]; then
   echo "Judge LoRA chat template: ${JUDGE_LORA_CHAT_TEMPLATE_PATH:-<none>}"
   echo "Judge LoRA tokenizer path: ${JUDGE_LORA_TOKENIZER_PATH:-<none>}"
 fi
-echo "HF_HOME: $HF_HOME"
+echo "HF_HOME host: $HF_HOME_HOST"
+echo "HF_HOME container: $HF_HOME_CONTAINER"
 echo "XDG cache home: $DFM_EVALS_XDG_CACHE_HOME"
 echo "XDG data home: $DFM_EVALS_XDG_DATA_HOME"
 echo "Triton cache dir: $DFM_EVALS_TRITON_CACHE_DIR"

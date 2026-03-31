@@ -156,6 +156,13 @@ Common flows:
   --target ./logs/evals-logs/tournament__demo__job-123 \
   --launch-map ./configs/tournaments/creative-writing-da-smoke
 
+# Add one new contestant to an existing tournament run
+./lumi/tournament_submit.sh \
+  --phase add-model \
+  --target ./logs/evals-logs/tournament__demo__job-123 \
+  --launch-map ./configs/tournaments/creative-writing-da-smoke \
+  --model vllm/local/new-model
+
 # Export tournament artifacts plus Every Eval Ever JSON
 ./lumi/tournament_submit.sh \
   --phase export \
@@ -170,6 +177,35 @@ Notes:
 - contestant endpoints are launched one model at a time from the launch-map.
 - `run` and `resume` require complete generation coverage and will fail fast if responses are missing.
 - raw contestant and judge server logs are written under `logs/evals-logs/<run_label>/services/vllm/`.
+
+### Add A New Model To An Existing Tournament
+
+Use this flow when a tournament already exists and you want to append one newly
+trained contestant without starting a fresh run.
+
+1. Add the contestant name to `configs/tournaments/<name>/tournament.yaml`.
+2. Add the matching launch entry to `configs/tournaments/<name>/launch-map.yaml`.
+3. Submit `add-model` against the canonical existing run directory:
+
+```bash
+./lumi/tournament_submit.sh \
+  --phase add-model \
+  --target ./logs/evals-logs/tournament__demo__job-123 \
+  --launch-map ./configs/tournaments/demo \
+  --model vllm/local/new-model
+```
+
+4. Monitor the Slurm job and the run logs:
+
+```bash
+squeue -j <job_id>
+tail -f logs/slurm/tournament__demo__job-123-<job_id>.out
+```
+
+Notes:
+
+- Use the existing tournament run dir as `--target`.
+- `add-model` updates the persisted tournament state for that run, scales `max_total_matches`, and then generates only for contestants that are still missing responses.
 
 Hosted tournament viewer:
 

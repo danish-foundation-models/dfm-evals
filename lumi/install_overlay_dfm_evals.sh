@@ -31,8 +31,10 @@ Notes:
     same repo-path bind that `lumi/run_suite.sbatch` uses.
   - Editable installs therefore point at the host repo path, not at /workspace.
   - Default behavior is:
-      * no extras: `pip install -e . --no-deps`
+      * no extras: `pip install -e .`
       * with extras: `pip install -e ".[extras]"`
+      * pass `--no-deps` for a fast code-only reinstall into an overlay that
+        already has the project dependencies
 EOF
 }
 
@@ -79,7 +81,7 @@ if [[ -n "$EXTRAS" ]]; then
 fi
 
 NO_DEPS_FLAG=""
-if [[ "$NO_DEPS_SET" == "1" || -z "$EXTRAS" ]]; then
+if [[ "$NO_DEPS_SET" == "1" ]]; then
   NO_DEPS_FLAG="--no-deps"
 fi
 
@@ -96,8 +98,18 @@ export UV_CACHE_DIR=/overlay/cache/uv
 export TMPDIR=/overlay/cache/tmp
 export HOME=/overlay/cache/home
 mkdir -p \"\$XDG_CACHE_HOME\" \"\$PIP_CACHE_DIR\" \"\$UV_CACHE_DIR\" \"\$TMPDIR\" \"\$HOME\"
+CONSTRAINTS_FILE=\"\${TMPDIR%/}/dfm-evals-overlay-constraints.txt\"
+python - <<'PY' > \"\$CONSTRAINTS_FILE\"
+import importlib.metadata as md
+
+for dist_name in (\"transformers\", \"huggingface-hub\", \"tokenizers\"):
+    try:
+        print(f\"{dist_name}=={md.version(dist_name)}\")
+    except md.PackageNotFoundError:
+        pass
+PY
 cd ${REPO_ROOT_Q}
-python -m pip install --no-user -U -e ${INSTALL_TARGET_Q}"
+python -m pip install --no-user -U -c \"\$CONSTRAINTS_FILE\" -e ${INSTALL_TARGET_Q}"
 
 if [[ -n "$NO_DEPS_FLAG" ]]; then
   INSTALL_CMD+=" ${NO_DEPS_FLAG}"

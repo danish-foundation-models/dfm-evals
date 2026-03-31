@@ -15,18 +15,22 @@ LAIFS_APPL_DIR=/appl/local/laifs
 : "${OVERLAY_DIR:=$REPO_ROOT/overlay_vllm_minimal}"
 
 : "${VLLM_REPO:=https://github.com/vllm-project/vllm.git}"
-: "${VLLM_REF:=main}"
+# Pin the default overlay to the latest stable 0.16.x release for now.
+# Newer 0.17+/0.18+ builds regressed Gemma 3 + LoRA generation quality on LUMI
+# in our smoke tests, while 0.16.0 is working with the current launcher path.
+: "${VLLM_REF:=v0.16.0}"
 
-: "${TRANSFORMERS_FROM_SOURCE:=1}"
+: "${TRANSFORMERS_FROM_SOURCE:=0}"
 : "${TRANSFORMERS_REPO:=https://github.com/huggingface/transformers.git}"
 : "${TRANSFORMERS_REF:=main}"
-: "${TRANSFORMERS_VERSION:=5.1.0}"
+: "${TRANSFORMERS_VERSION:=4.57.3}"
 
-: "${HF_HUB_VERSION:=1.4.1}"
+: "${HF_HUB_VERSION:=0.36.2}"
 : "${TOKENIZERS_VERSION:=0.22.2}"
 : "${PYTORCH_WHEEL_INDEX:=https://download.pytorch.org/whl}"
 : "${PYTORCH_ROCM_ARCH:=gfx90a}"
 : "${MAX_JOBS:=64}"
+: "${CONFIG_SMOKE_MODEL:=Qwen/Qwen2.5-1.5B-Instruct}"
 
 if [[ ! -f "$SIF" ]]; then
   echo "FATAL: SIF not found: $SIF" >&2
@@ -49,6 +53,7 @@ export VLLM_REPO VLLM_REF
 export TRANSFORMERS_FROM_SOURCE TRANSFORMERS_REPO TRANSFORMERS_REF TRANSFORMERS_VERSION
 export HF_HUB_VERSION TOKENIZERS_VERSION PYTORCH_WHEEL_INDEX
 export PYTORCH_ROCM_ARCH MAX_JOBS
+export CONFIG_SMOKE_MODEL
 
 singularity exec --rocm \
   -B "$BASE_DIR:$LAIFS_APPL_DIR" \
@@ -119,8 +124,8 @@ else
     "${BASE_PYTORCH_TRITON_SOURCE}"
 fi
 
-# Keep these explicit because transformers source currently needs newer hub
-# than the base LAIF image provides.
+# Keep these explicit so the overlay wins over the container's older base
+# packages and stays on a self-consistent stable HF stack.
 python -m pip install --no-user -U \
   "huggingface_hub==${HF_HUB_VERSION}" \
   "tokenizers==${TOKENIZERS_VERSION}"
@@ -169,6 +174,7 @@ import vllm._C  # noqa: F401
 import importlib.metadata as md
 from transformers import AutoConfig
 from vllm.transformers_utils.config import get_config
+import os
 
 print("torch:", torch.__version__)
 print("pytorch-triton-rocm:", md.version("pytorch-triton-rocm"))
@@ -178,9 +184,10 @@ print("transformers:", transformers.__version__)
 print("transformers path:", transformers.__file__)
 print("vllm:", vllm.__version__)
 print("vllm path:", vllm.__file__)
-cfg = AutoConfig.from_pretrained("Qwen/Qwen3.5-397B-A17B")
+model_id = os.environ["CONFIG_SMOKE_MODEL"]
+cfg = AutoConfig.from_pretrained(model_id, trust_remote_code=False)
 print("AutoConfig model_type:", cfg.model_type)
-v_cfg = get_config("Qwen/Qwen3.5-397B-A17B", trust_remote_code=False)
+v_cfg = get_config(model_id, trust_remote_code=False)
 print("vllm.get_config model_type:", v_cfg.model_type)
 PY
 
