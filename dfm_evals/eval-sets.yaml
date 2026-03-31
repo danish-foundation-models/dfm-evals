@@ -38,7 +38,10 @@ sets:
       - inspect_evals/ifeval
       - dfm_evals/ifeval-da
       - inspect_evals/truthfulqa
-      - dfm_evals/danske-talemaader
+      - name: dfm_evals/danske-talemaader
+        args:
+          - -T
+          - judge_model={{judge_model}}
       - name: inspect_evals/agentharm_benign
         args:
           - -T
