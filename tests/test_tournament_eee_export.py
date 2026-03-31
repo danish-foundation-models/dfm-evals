@@ -364,6 +364,25 @@ def test_parse_model_info_treats_two_part_vllm_refs_as_unknown_developer() -> No
     }
 
 
+def test_parse_model_info_normalizes_local_vllm_paths() -> None:
+    modules = _modules()
+
+    model_info = modules["eee_export_module"]._parse_model_info(
+        "vllm//pfs/lustref1/flash/project_465002183/trl-runs/hermes-4n-full-20260306-lr3e5-warmup50/final",
+        fallback_vllm_version="0.8.5",
+    )
+
+    assert model_info == {
+        "name": "vllm//pfs/lustref1/flash/project_465002183/trl-runs/hermes-4n-full-20260306-lr3e5-warmup50/final",
+        "id": "local/hermes-4n-full-20260306-lr3e5-warmup50-final",
+        "developer": "local",
+        "inference_engine": {
+            "name": "vllm",
+            "version": "0.8.5",
+        },
+    }
+
+
 def test_export_euroeval_results_does_not_use_engine_name_as_developer(tmp_path: Path) -> None:
     modules = _modules()
     results_file = tmp_path / "euroeval-vllm.jsonl"

@@ -391,6 +391,69 @@ def compact_label(value: str, max_len: int = 10) -> str:
     return base if len(base) <= max_len else base[:max_len]
 
 
+def is_local_path_reference(value: str) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    return text.startswith(("/", "./", "../", "~/"))
+
+
+def model_label_from_ref(model_ref: str) -> str:
+    ref = str(model_ref or "").strip()
+    if not ref:
+        return "model"
+
+    for prefix in ("vllm/", "openai/"):
+        if ref.startswith(prefix):
+            ref = ref[len(prefix) :]
+            break
+
+    parts = [part for part in ref.split("/") if part]
+    if len(parts) >= 2:
+        base_name = parts[-1]
+        parent_name = parts[-2]
+    elif parts:
+        base_name = parts[-1]
+        parent_name = ""
+    else:
+        base_name = ref
+        parent_name = ""
+
+    if (
+        base_name in {"final", "latest", "last"}
+        or base_name.startswith("checkpoint-")
+        or base_name.startswith("step-")
+        or base_name.startswith("epoch-")
+    ):
+        label = f"{parent_name}-{base_name}" if parent_name else base_name
+    else:
+        label = base_name
+
+    cleaned = []
+    for char in label:
+        if char.isalnum() or char in "._-":
+            cleaned.append(char)
+        else:
+            cleaned.append("_")
+    result = "".join(cleaned).strip("._-")
+    return result or "model"
+
+
+def canonical_model_id(model_id: str, model_name: str) -> str:
+    raw_id = str(model_id or "").strip()
+    raw_name = str(model_name or "").strip()
+
+    for candidate in (raw_name, raw_id):
+        if candidate.startswith("vllm/"):
+            suffix = candidate[len("vllm/") :]
+            if is_local_path_reference(suffix):
+                return f"local/{model_label_from_ref(candidate)}"
+        if is_local_path_reference(candidate):
+            return f"local/{model_label_from_ref(candidate)}"
+
+    return raw_id or raw_name or "-"
+
+
 def unique_compact_labels(values: list[str], max_len: int) -> list[str]:
     used: set[str] = set()
     labels: list[str] = []
@@ -468,8 +531,9 @@ def row_from_eval_result(record, eval_result, path, file_ts):
     total = n
     run = source_metadata.get("source_name") or (parts[0] if parts else "-")
 
-    model = model_info.get("id") or model_info.get("name") or "-"
-    reported_model = model_info.get("name") or model
+    raw_model = model_info.get("id") or model_info.get("name") or "-"
+    reported_model = model_info.get("name") or raw_model
+    model = canonical_model_id(str(raw_model), str(reported_model))
     preferred_for_display = str(metric_config_details.get("preferred_for_display") or "").strip().lower() in {
         "1",
         "true",

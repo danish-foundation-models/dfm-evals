@@ -176,6 +176,13 @@ def _model_label_from_ref(model_ref: str) -> str:
     return result or "model"
 
 
+def _is_local_path_reference(value: str) -> bool:
+    text = (value or "").strip()
+    if not text:
+        return False
+    return text.startswith(("/", "./", "../", "~/"))
+
+
 def _extract_lora_context_from_server_logs(eval_log_path: Path) -> dict[str, str] | None:
     server_dir = eval_log_path.parent / "_vllm_server"
     if not server_dir.is_dir():
@@ -307,11 +314,19 @@ def _parse_model_info(
     reference = (model_ref or "unknown_model").strip() or "unknown_model"
     parts = reference.split("/")
     prefix = parts[0].lower() if parts else "unknown"
+    runtime_suffix = reference.split("/", 1)[1] if "/" in reference else ""
 
     inference_platform: str | None = None
     inference_engine: dict[str, str] | None = None
 
-    if prefix in ENGINE_PREFIXES:
+    if prefix in ENGINE_PREFIXES and _is_local_path_reference(runtime_suffix):
+        developer = "local"
+        model_id = f"local/{_model_label_from_ref(reference)}"
+        inference_engine = {"name": prefix}
+    elif _is_local_path_reference(reference):
+        developer = "local"
+        model_id = f"local/{_model_label_from_ref(reference)}"
+    elif prefix in ENGINE_PREFIXES:
         if len(parts) >= 3:
             developer = parts[1]
             model_name = parts[2].split("#", 1)[0].split("@", 1)[0]
