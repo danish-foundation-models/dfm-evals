@@ -34,10 +34,10 @@ PROMPT_TEMPLATE_DA = (
     'Talemåde: "{talemaade_udtryk}"\n\n'
     "Forklaring:"
 )
+TASK_NAME = "generative-talemaader"
+DATASET_NAME = TASK_NAME
 
-
-@task(name="danske-talemaader")
-def danske_talemaader(
+def _talemaader_task(
     split: str = DEFAULT_SPLIT,
     judge_model: str | None = None,
     judge_model_role: str | None = "grader",
@@ -79,6 +79,29 @@ def danske_talemaader(
     )
 
 
+@task(name=TASK_NAME)
+def generative_talemaader(
+    split: str = DEFAULT_SPLIT,
+    judge_model: str | None = None,
+    judge_model_role: str | None = "grader",
+    source_zip_url: str = SOURCE_ZIP_URL,
+    source_csv_name: str = SOURCE_CSV_NAME,
+    shuffle: bool = False,
+    seed: int | None = None,
+    limit: int | None = None,
+) -> Task:
+    return _talemaader_task(
+        split=split,
+        judge_model=judge_model,
+        judge_model_role=judge_model_role,
+        source_zip_url=source_zip_url,
+        source_csv_name=source_csv_name,
+        shuffle=shuffle,
+        seed=seed,
+        limit=limit,
+    )
+
+
 def _memory_dataset(
     *,
     split: str,
@@ -103,7 +126,7 @@ def _memory_dataset(
 
     return MemoryDataset(
         samples=samples,
-        name="DanskeTalemaaderMeaning",
+        name=DATASET_NAME,
         location=source_zip_url,
     )
 

@@ -43,6 +43,14 @@ LOWER_IS_BETTER_HINTS = (
 CORRECT_TEXT_LABELS = {"C", "CORRECT", "TRUE", "PASS", "YES"}
 INCORRECT_TEXT_LABELS = {"I", "INCORRECT", "FALSE", "FAIL", "NO"}
 DEFAULT_PREFERRED_INSPECT_METRICS = {
+    "danish-citizen-tests": {
+        "scorer": "knowledge",
+        "metric": "accuracy",
+    },
+    "dala": {
+        "scorer": "linguistic-acceptability",
+        "metric": "macro_f1",
+    },
     "gec_dala": {
         "scorer": "gleu",
         "metric": "mean",

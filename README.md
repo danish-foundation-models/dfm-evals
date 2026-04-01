@@ -11,8 +11,9 @@ It provides:
 - a built-in Prime sandbox provider
 - LUMI-specific launch helpers under [`lumi/`](lumi/)
 
-The package is exposed to Inspect through the `dfm_evals` registry entry point,
-so local tasks can be run as `dfm_evals/<task-name>`.
+The package is exposed to Inspect through the `dfm_evals` registry entry point.
+In the current runtime, local tasks are invoked by their bare task ids, for
+example `multi_wiki_qa`.
 
 ## What Is In This Repo
 
@@ -26,13 +27,15 @@ Main areas:
 
 Current local tasks include:
 
-- `dfm_evals/multi_wiki_qa`
-- `dfm_evals/gec_dala`
-- `dfm_evals/bfcl-v1`
-- `dfm_evals/bfcl-v1-da`
-- `dfm_evals/ifeval-da`
-- `dfm_evals/piqa`
-- `dfm_evals/danske-talemaader`
+- `multi_wiki_qa`
+- `gec_dala`
+- `bfcl-v1`
+- `bfcl-v1-da`
+- `ifeval-da`
+- `piqa`
+- `generative-talemaader`
+
+The `fundamentals` suite uses a mix of upstream Inspect tasks and local bare task ids.
 
 ## Install
 
@@ -51,7 +54,7 @@ uv sync --group dev
 Optional extras:
 
 - `uv sync --extra comet` for COMET-related dependencies
-- `uv sync --extra ifeval` for the local `dfm_evals/ifeval-da` task used by the `fundamentals` suite
+- `uv sync --extra ifeval` for the local `ifeval-da` task used by the `fundamentals` suite
 - `uv sync --extra harbor` for `inspect-harbor` tasks on Python 3.12+
 - `uv sync --extra sandboxes` for compose-aware sandbox providers on Python 3.12+
 
@@ -66,7 +69,7 @@ uv run evals tasks
 Run a local task:
 
 ```bash
-uv run evals run dfm_evals/multi_wiki_qa --model openai/gpt-5-mini
+uv run evals run multi_wiki_qa --model openai/gpt-5-mini
 ```
 
 Run a packaged suite:
@@ -109,7 +112,7 @@ uv run pytest
 ## Suites And Configs
 
 Packaged suites live in [`dfm_evals/eval-sets.yaml`](dfm_evals/eval-sets.yaml).
-They can reference both upstream Inspect tasks and local `dfm_evals/...` tasks.
+They can reference both upstream Inspect tasks and local bare task ids.
 
 The suite runner supports these placeholders:
 
@@ -128,7 +131,7 @@ Example:
 
 ```bash
 PRIME_API_KEY=... \
-uv run evals run dfm_evals/multi_wiki_qa \
+uv run evals run multi_wiki_qa \
   --model openai/gpt-5-mini \
   --sandbox prime
 ```
@@ -161,8 +164,9 @@ def my_task() -> Task:
     ...
 ```
 
-After that, the task becomes available as `dfm_evals/my-task` because the
-package entry point already points to [`dfm_evals/_registry.py`](dfm_evals/_registry.py).
+After that, the task becomes available as `my-task` in `uv run evals tasks`
+because the package entry point already points to
+[`dfm_evals/_registry.py`](dfm_evals/_registry.py).
 
 ### Add A Scorer
 
@@ -219,6 +223,6 @@ When adding any new component:
 ## Development Notes
 
 - The registry import path is centered on [`dfm_evals/_exports.py`](dfm_evals/_exports.py) and [`dfm_evals/_registry.py`](dfm_evals/_registry.py).
-- Local task ids are exposed through Inspect as `dfm_evals/<task-name>`.
+- Local task ids are currently exposed as bare task ids such as `multi_wiki_qa`.
 - Keep task-specific logic close to the task unless it is clearly reusable.
 - Prefer small tests that exercise record normalization, scorer behavior, and registry loading.

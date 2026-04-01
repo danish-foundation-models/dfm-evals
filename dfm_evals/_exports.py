@@ -3,8 +3,10 @@ from __future__ import annotations
 from importlib import import_module
 
 REGISTRY_EXPORTS = {
-    "danske_talemaader": "dfm_evals.tasks.talemaader.task:danske_talemaader",
+    "danish_citizen_tests": "dfm_evals.tasks.danish_citizen_tests:danish_citizen_tests",
+    "generative_talemaader": "dfm_evals.tasks.talemaader.task:generative_talemaader",
     "multi_wiki_qa": "dfm_evals.tasks.multi_wiki_qa:multi_wiki_qa",
+    "dala": "dfm_evals.tasks.dala:dala",
     "gec_dala": "dfm_evals.tasks.gec_dala:gec_dala",
     "bfcl": "dfm_evals.tasks.bfcl.bfcl:bfcl",
     "bfcl_da": "dfm_evals.tasks.bfcl.bfcl:bfcl_da",
@@ -15,7 +17,7 @@ REGISTRY_EXPORTS = {
 }
 
 TOP_LEVEL_EXPORTS = (
-    "danske_talemaader",
+    "generative_talemaader",
     "multi_wiki_qa",
     "bfcl",
     "bfcl_da",

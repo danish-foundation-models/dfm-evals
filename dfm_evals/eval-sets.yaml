@@ -28,7 +28,9 @@ sets:
       - --model
       - "{{target_model}}"
       - --limit
-      - "5"
+      - "25"
+      - --sample-shuffle
+      - "4242"
       - --temperature
       - "0"
   fundamentals:
@@ -36,33 +38,24 @@ sets:
     tasks:
       - inspect_evals/gsm8k
       - inspect_evals/ifeval
-      - dfm_evals/ifeval-da
+      - ifeval-da
       - inspect_evals/truthfulqa
-      - name: dfm_evals/danske-talemaader
+      - name: generative-talemaader
         args:
           - -T
           - judge_model={{judge_model}}
-      - name: inspect_evals/agentharm_benign
-        args:
-          - -T
-          - refusal_judge={{judge_model}}
-          - -T
-          - semantic_judge={{judge_model}}
-          - --max-tokens
-          - "512"
-          - --limit
-          - "20"
-      - name: inspect_evals/simpleqa_verified
-        args:
-          - -T
-          - grader_model={{judge_model}}
-      - dfm_evals/multi_wiki_qa
-      - dfm_evals/bfcl-v1
+      - danish-citizen-tests
+      - dala
+      - gec_dala
+      - multi_wiki_qa
+      - inspect_evals/bfcl
     args:
       - --model
       - "{{target_model}}"
       - --limit
-      - "100"
+      - "250"
+      - --sample-shuffle
+      - "4242"
       - --temperature
       - "0"
   openthoughts_tblite:
@@ -77,6 +70,8 @@ sets:
       - --message-limit
       - "100"
       - --limit
-      - "100"
+      - "250"
+      - --sample-shuffle
+      - "4242"
       - --temperature
       - "0"

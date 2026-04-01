@@ -11,7 +11,7 @@ from inspect_ai.dataset import MemoryDataset, Sample, hf_dataset
 from inspect_ai.scorer import Score, Scorer, Target, mean, scorer, stderr
 from inspect_ai.solver import TaskState
 
-PUBLIC_SOURCE_DATASET_ID = "alexandrainst/multi-wiki-qa"
+PUBLIC_SOURCE_DATASET_ID = "oliverkinch/multi-wiki-qa-high-quality-subset"
 DEFAULT_LANGUAGE = "da"
 DEFAULT_SPLIT = "test"
 DEFAULT_MAX_ANSWER_WORDS = 3
@@ -160,8 +160,19 @@ def _load_public_records(source_dataset_id: str, language: str) -> list[dict[str
             "Loading public MultiWikiQA requires the `datasets` package."
         ) from exc
 
-    dataset = load_dataset(source_dataset_id, name=language, split="train")
+    try:
+        dataset = load_dataset(source_dataset_id, name=language, split="train")
+    except ValueError as exc:
+        if not _is_default_only_builder_config_error(exc):
+            raise
+        dataset = load_dataset(source_dataset_id, split="train")
+
     return [dict(record) for record in dataset]
+
+
+def _is_default_only_builder_config_error(exc: ValueError) -> bool:
+    message = str(exc)
+    return "BuilderConfig" in message and "Available: ['default']" in message
 
 
 def _is_valid_public_record(record: dict[str, Any]) -> bool:
