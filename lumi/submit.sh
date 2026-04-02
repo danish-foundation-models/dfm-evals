@@ -34,10 +34,10 @@ JUDGE_MODEL_SET=0
 OPENAI_BASE_URL_OVERRIDE=${OPENAI_BASE_URL_OVERRIDE:-}
 SUITE=${SUITE:-fundamentals}
 LIMIT=${LIMIT:-100}
-TP=${TP:-1}
+TP=${TP:-8}
 PP=${PP:-1}
-DP=${DP:-8}
-CTX=${CTX:-4096}
+DP=${DP:-1}
+CTX=${CTX:-}
 GPU_MEM=${GPU_MEM:-0.92}
 TARGET_PORT=${TARGET_PORT:-8000}
 TARGET_VISIBLE_DEVICES=${TARGET_VISIBLE_DEVICES:-}
@@ -81,10 +81,10 @@ Options:
   --openai-base-url <url>    Override OPENAI_BASE_URL inside job/container
   --suite <name>             Eval suite (default: fundamentals)
   --limit <n|none>           Sample limit (default: 100, use 'none' to omit)
-  --tp <n>                   Target server tensor parallel size (default: 1)
+  --tp <n>                   Target server tensor parallel size (default: 8)
   --pp <n>                   Target server pipeline parallel size (default: 1)
-  --dp <n>                   Target server data parallel size (default: 8)
-  --ctx <n>                  Target server max model len (default: 4096)
+  --dp <n>                   Target server data parallel size (default: 1)
+  --ctx <n|auto>             Target server max model len (default: auto from model)
   --gpu-mem <f>              Target server GPU memory utilization (default: 0.92)
   --target-port <n>          Target vLLM server port (default: 8000)
   --target-devices <csv>     Target HIP/CUDA visible devices (default: all)
@@ -96,7 +96,7 @@ Options:
   --judge-tp <n>             Judge server tensor parallel size (default: 1)
   --judge-pp <n>             Judge server pipeline parallel size (default: 1)
   --judge-dp <n>             Judge server data parallel size (default: 1)
-  --judge-ctx <n>            Judge server max model len (default: 4096)
+  --judge-ctx <n|auto>       Judge server max model len (default: auto / match target)
   --judge-gpu-mem <f>        Judge server GPU memory utilization (default: 0.85)
   --judge-devices <csv>      Judge HIP/CUDA visible devices (default: all)
   --max-connections <n>      Concurrency for inspect eval (default: 128)
@@ -453,6 +453,16 @@ fi
 if [[ "$JUDGE_CTX_SET" != "1" ]]; then
   JUDGE_CTX="$CTX"
 fi
+case "${CTX}" in
+  ""|auto|none)
+    CTX=""
+    ;;
+esac
+case "${JUDGE_CTX}" in
+  ""|auto|none)
+    JUDGE_CTX=""
+    ;;
+esac
 if [[ -z "$JUDGE_SERVER_MODEL" ]]; then
   JUDGE_SERVER_MODEL="$MODEL"
 fi
@@ -541,6 +551,12 @@ env_kv=(
   "JUDGE_CHAT_TEMPLATE_KWARGS_JSON=$JUDGE_CHAT_TEMPLATE_KWARGS_JSON"
   "JUDGE_ENFORCE_EAGER=$JUDGE_ENFORCE_EAGER"
 )
+if [[ -n "${SERVER_START_TIMEOUT:-}" ]]; then
+  env_kv+=("SERVER_START_TIMEOUT=$SERVER_START_TIMEOUT")
+fi
+if [[ -n "${SERVER_START_STEP:-}" ]]; then
+  env_kv+=("SERVER_START_STEP=$SERVER_START_STEP")
+fi
 if [[ -n "$RUN_LABEL" ]]; then
   env_kv+=("DFM_EVALS_RUN_LABEL=$RUN_LABEL")
 fi
@@ -580,7 +596,7 @@ else
   echo "Limit: <unset>"
 fi
 echo "TP/PP/DP: $TP/$PP/$DP"
-echo "CTX: $CTX"
+echo "CTX: ${CTX:-<auto>}"
 echo "GPU_MEM: $GPU_MEM"
 echo "Target port: $TARGET_PORT"
 echo "Target devices: ${TARGET_VISIBLE_DEVICES:-<all>}"
@@ -593,7 +609,7 @@ echo "Judge server enabled: $JUDGE_SERVER_ENABLED"
 echo "Judge server model: $JUDGE_SERVER_MODEL"
 echo "Judge port: $JUDGE_PORT"
 echo "Judge TP/PP/DP: $JUDGE_TP/$JUDGE_PP/$JUDGE_DP"
-echo "Judge CTX: $JUDGE_CTX"
+echo "Judge CTX: ${JUDGE_CTX:-<auto>}"
 echo "Judge GPU_MEM: $JUDGE_GPU_MEM"
 echo "Judge devices: ${JUDGE_VISIBLE_DEVICES:-<all>}"
 echo "Judge auto tool choice: $JUDGE_ENABLE_AUTO_TOOL_CHOICE"
@@ -622,8 +638,18 @@ fi
 if [[ -n "$OPENAI_BASE_URL_OVERRIDE" ]]; then
   echo "OpenAI base URL override: $OPENAI_BASE_URL_OVERRIDE"
 fi
+if [[ -n "${SERVER_START_TIMEOUT:-}" ]]; then
+  echo "Server start timeout override: $SERVER_START_TIMEOUT"
+fi
+if [[ -n "${SBATCH_BEGIN:-}" ]]; then
+  echo "Slurm begin override: $SBATCH_BEGIN"
+fi
 
-cmd=(env "${env_kv[@]}" sbatch --output "$slurm_out_path" --error "$slurm_err_path" "$SUBMIT_SCRIPT")
+cmd=(env "${env_kv[@]}" sbatch)
+if [[ -n "${SBATCH_BEGIN:-}" ]]; then
+  cmd+=(--begin "$SBATCH_BEGIN")
+fi
+cmd+=(--output "$slurm_out_path" --error "$slurm_err_path" "$SUBMIT_SCRIPT")
 if [[ "$DRY_RUN" == "1" ]]; then
   printf 'Dry run command: '
   printf '(cd %q && ' "$REPO_ROOT"

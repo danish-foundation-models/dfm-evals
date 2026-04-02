@@ -54,10 +54,10 @@ DFM_EVALS_EEE_OUTPUT_DIR=${DFM_EVALS_EEE_OUTPUT_DIR:-$POST_ARTIFACT_ROOT/evals/e
 DFM_EVALS_EEE_SOURCE_ORGANIZATION_NAME=${DFM_EVALS_EEE_SOURCE_ORGANIZATION_NAME:-dfm-evals}
 DFM_EVALS_EEE_EVALUATOR_RELATIONSHIP=${DFM_EVALS_EEE_EVALUATOR_RELATIONSHIP:-third_party}
 
-TP=${TP:-1}
+TP=${TP:-8}
 PP=${PP:-1}
-DP=${DP:-8}
-CTX=${CTX:-4096}
+DP=${DP:-1}
+CTX=${CTX:-}
 GPU_MEM=${GPU_MEM:-0.92}
 MAX_CONNECTIONS=${MAX_CONNECTIONS:-128}
 TARGET_PORT=${TARGET_PORT:-8000}
@@ -81,6 +81,17 @@ JUDGE_ENABLE_AUTO_TOOL_CHOICE=${JUDGE_ENABLE_AUTO_TOOL_CHOICE:-0}
 JUDGE_TOOL_CALL_PARSER=${JUDGE_TOOL_CALL_PARSER:-}
 JUDGE_CHAT_TEMPLATE_KWARGS_JSON=${JUDGE_CHAT_TEMPLATE_KWARGS_JSON:-}
 JUDGE_ENFORCE_EAGER=${JUDGE_ENFORCE_EAGER:-0}
+
+case "${CTX}" in
+  ""|auto|none)
+    CTX=""
+    ;;
+esac
+case "${JUDGE_CTX}" in
+  ""|auto|none)
+    JUDGE_CTX=""
+    ;;
+esac
 
 SERVER_START_TIMEOUT=${SERVER_START_TIMEOUT:-900}
 SERVER_START_STEP=${SERVER_START_STEP:-5}
@@ -645,6 +656,9 @@ fi
   if [[ \"\${ENFORCE_EAGER:-0}\" == \"1\" ]]; then
     EXTRA_VLLM_FLAGS+=(--enforce-eager)
   fi
+  if [[ -n \"\${CTX:-}\" ]]; then
+    EXTRA_VLLM_FLAGS+=(--max-model-len \"\${CTX}\")
+  fi
 if [[ \"\${USE_LORA_ADAPTER:-0}\" == \"1\" ]]; then
   EXTRA_VLLM_FLAGS+=(--enable-lora --lora-modules \"\${LORA_MODULE_SPEC}\" --max-lora-rank \"\${LORA_MAX_RANK}\")
   if [[ -n \"\${LORA_CHAT_TEMPLATE_PATH:-}\" ]]; then
@@ -664,7 +678,6 @@ python -m dfm_evals.vllm_serve serve \"\${MODEL_TAG}\" \\
   --pipeline-parallel-size \"\${PP}\" \\
   --data-parallel-size \"\${DP}\" \\
   --gpu-memory-utilization \"\${GPU_MEM}\" \\
-  --max-model-len \"\${CTX}\" \\
   --safetensors-load-strategy eager \\
   \"\${EXTRA_VLLM_FLAGS[@]}\""
 
@@ -936,7 +949,7 @@ echo "Target server model tag: $TARGET_SERVER_MODEL_TAG"
 echo "Target served model name: $TARGET_SERVER_SERVED_MODEL_NAME"
 echo "Target URL: ${TARGET_VLLM_URL:-<none>}"
 echo "Target TP/PP/DP: $TP/$PP/$DP"
-echo "Target CTX: $CTX"
+echo "Target CTX: ${CTX:-<auto>}"
 echo "Target GPU_MEM: $GPU_MEM"
 echo "Target visible devices: ${TARGET_VISIBLE_DEVICES:-<all>}"
 echo "Target auto tool choice: $TARGET_ENABLE_AUTO_TOOL_CHOICE"
@@ -949,7 +962,7 @@ if [[ "$JUDGE_SERVER_ENABLED" == "1" ]]; then
   echo "Judge served model name: $JUDGE_SERVER_SERVED_MODEL_NAME"
   echo "Judge URL: ${JUDGE_VLLM_URL:-<starting>}"
   echo "Judge TP/PP/DP: $JUDGE_TP/$JUDGE_PP/$JUDGE_DP"
-  echo "Judge CTX: $JUDGE_CTX"
+  echo "Judge CTX: ${JUDGE_CTX:-<auto>}"
   echo "Judge GPU_MEM: $JUDGE_GPU_MEM"
   echo "Judge visible devices: ${JUDGE_VISIBLE_DEVICES:-<all>}"
   echo "Judge auto tool choice: $JUDGE_ENABLE_AUTO_TOOL_CHOICE"

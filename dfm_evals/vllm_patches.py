@@ -12,6 +12,7 @@ except ImportError:
 
 _INSTANCE_LOCK_ATTR = "_dfm_evals_thread_safe_lock"
 _PATCH_LOCK = threading.Lock()
+_SHARED_LOCKS: dict[int, threading.RLock] = {}
 
 
 def apply_instance_method_rlock_patch(
@@ -22,18 +23,31 @@ def apply_instance_method_rlock_patch(
     if getattr(target_cls, patch_flag, False):
         return
 
-    def get_instance_lock(instance: Any) -> threading.RLock:
-        lock = getattr(instance, _INSTANCE_LOCK_ATTR, None)
-        if lock is not None:
-            return lock
+    def get_lock_target(instance: Any) -> Any:
+        backend = getattr(instance, "_tokenizer", None)
+        if backend is not None:
+            return backend
+        return instance
 
-        with _PATCH_LOCK:
+    def get_instance_lock(instance: Any) -> threading.RLock:
+        lock_target = get_lock_target(instance)
+        if lock_target is instance:
             lock = getattr(instance, _INSTANCE_LOCK_ATTR, None)
             if lock is not None:
                 return lock
 
-            lock = threading.RLock()
-            setattr(instance, _INSTANCE_LOCK_ATTR, lock)
+        lock = _SHARED_LOCKS.get(id(lock_target))
+        if lock is not None:
+            return lock
+
+        with _PATCH_LOCK:
+            lock = _SHARED_LOCKS.get(id(lock_target))
+            if lock is None:
+                lock = threading.RLock()
+                _SHARED_LOCKS[id(lock_target)] = lock
+
+            if lock_target is instance:
+                setattr(instance, _INSTANCE_LOCK_ATTR, lock)
             return lock
 
     for method_name in method_names:
@@ -140,6 +154,7 @@ def apply_fast_tokenizer_thread_safety_patch(fast_tokenizer_cls: type) -> None:
             "encode_plus",
             "batch_encode_plus",
             "_batch_encode_plus",
+            "set_truncation_and_padding",
             "decode",
             "batch_decode",
         ),
