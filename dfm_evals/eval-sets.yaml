@@ -36,19 +36,97 @@ sets:
   fundamentals:
     description: Broad inspect_evals fundamentals set
     tasks:
-      - inspect_evals/gsm8k
-      - inspect_evals/ifeval
-      - ifeval-da
-      - inspect_evals/truthfulqa
+      - name: inspect_evals/gsm8k
+        args:
+          - --max-tokens
+          - "2048"
+      - name: inspect_evals/ifeval
+        args:
+          - --max-tokens
+          - "3072"
+      - name: ifeval-da
+        args:
+          - --max-tokens
+          - "3072"
+      - name: inspect_evals/truthfulqa
+        args:
+          - --max-tokens
+          - "512"
       - name: generative-talemaader
         args:
           - -T
           - judge_model={{judge_model}}
+          - -T
+          - max_gen_toks=128
       - danish-citizen-tests
       - dala
       - gec_dala
-      - multi_wiki_qa
-      - inspect_evals/bfcl
+      - name: multi_wiki_qa
+        args:
+          - -T
+          - max_gen_toks=32
+      - name: inspect_evals/bfcl
+        args:
+          - --max-tokens
+          - "1024"
+          - --message-limit
+          - "24"
+      - name: ruler
+        args:
+          - -T
+          - variant=qa_1
+          - -T
+          - num_samples=16
+          - -T
+          - max_seq_length=8192
+          - -T
+          - tokenizer_backend=auto
+          - -T
+          - tokenizer_model={{target_model}}
+          - -T
+          - context_buffer_tokens=256
+      - name: ruler
+        args:
+          - -T
+          - variant=qa_2
+          - -T
+          - num_samples=16
+          - -T
+          - max_seq_length=32768
+          - -T
+          - tokenizer_backend=auto
+          - -T
+          - tokenizer_model={{target_model}}
+          - -T
+          - context_buffer_tokens=256
+      - name: ruler
+        args:
+          - -T
+          - variant=vt
+          - -T
+          - num_samples=16
+          - -T
+          - max_seq_length=8192
+          - -T
+          - tokenizer_backend=auto
+          - -T
+          - tokenizer_model={{target_model}}
+          - -T
+          - context_buffer_tokens=256
+      - name: ruler
+        args:
+          - -T
+          - variant=vt
+          - -T
+          - num_samples=16
+          - -T
+          - max_seq_length=32768
+          - -T
+          - tokenizer_backend=auto
+          - -T
+          - tokenizer_model={{target_model}}
+          - -T
+          - context_buffer_tokens=256
     args:
       - --model
       - "{{target_model}}"
@@ -56,6 +134,88 @@ sets:
       - "250"
       - --sample-shuffle
       - "4242"
+      - --temperature
+      - "0"
+  bfcl_only:
+    description: BFCL-only rerun suite using the upstream inspect_evals task
+    tasks:
+      - name: inspect_evals/bfcl
+        args:
+          - --max-tokens
+          - "1024"
+          - --message-limit
+          - "24"
+    args:
+      - --model
+      - "{{target_model}}"
+      - --limit
+      - "250"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+  ruler_only:
+    description: RULER-only suite for long-context spot checks and table refreshes
+    tasks:
+      - name: ruler
+        args:
+          - -T
+          - variant=qa_1
+          - -T
+          - num_samples=16
+          - -T
+          - max_seq_length=8192
+          - -T
+          - tokenizer_backend=auto
+          - -T
+          - tokenizer_model={{target_model}}
+          - -T
+          - context_buffer_tokens=256
+      - name: ruler
+        args:
+          - -T
+          - variant=qa_2
+          - -T
+          - num_samples=16
+          - -T
+          - max_seq_length=32768
+          - -T
+          - tokenizer_backend=auto
+          - -T
+          - tokenizer_model={{target_model}}
+          - -T
+          - context_buffer_tokens=256
+      - name: ruler
+        args:
+          - -T
+          - variant=vt
+          - -T
+          - num_samples=16
+          - -T
+          - max_seq_length=8192
+          - -T
+          - tokenizer_backend=auto
+          - -T
+          - tokenizer_model={{target_model}}
+          - -T
+          - context_buffer_tokens=256
+      - name: ruler
+        args:
+          - -T
+          - variant=vt
+          - -T
+          - num_samples=16
+          - -T
+          - max_seq_length=32768
+          - -T
+          - tokenizer_backend=auto
+          - -T
+          - tokenizer_model={{target_model}}
+          - -T
+          - context_buffer_tokens=256
+    args:
+      - --model
+      - "{{target_model}}"
       - --temperature
       - "0"
   openthoughts_tblite:
@@ -71,6 +231,42 @@ sets:
       - "100"
       - --limit
       - "250"
+      - --sample-shuffle
+      - "4242"
+      - --temperature
+      - "0"
+  ruler_smoke:
+    description: Minimal RULER smoke suite for long-context synthetic retrieval and tracing
+    tasks:
+      - name: ruler
+        args:
+          - -T
+          - variant=niah_single_1
+          - -T
+          - num_samples=4
+          - -T
+          - max_seq_length=4096
+          - -T
+          - tokenizer_backend=hf
+          - -T
+          - tokenizer_model=google/gemma-3-4b-it
+      - name: ruler
+        args:
+          - -T
+          - variant=vt
+          - -T
+          - num_samples=4
+          - -T
+          - max_seq_length=4096
+          - -T
+          - tokenizer_backend=hf
+          - -T
+          - tokenizer_model=google/gemma-3-4b-it
+    args:
+      - --model
+      - "{{target_model}}"
+      - --limit
+      - "2"
       - --sample-shuffle
       - "4242"
       - --temperature

@@ -9,12 +9,13 @@ from typing import Any, Literal
 from inspect_ai import Task, task
 from inspect_ai.dataset import MemoryDataset, Sample, hf_dataset
 from inspect_ai.scorer import Score, Scorer, Target, mean, scorer, stderr
-from inspect_ai.solver import TaskState
+from inspect_ai.solver import TaskState, generate
 
 PUBLIC_SOURCE_DATASET_ID = "oliverkinch/multi-wiki-qa-high-quality-subset"
 DEFAULT_LANGUAGE = "da"
 DEFAULT_SPLIT = "test"
 DEFAULT_MAX_ANSWER_WORDS = 3
+DEFAULT_MAX_GEN_TOKS = 32
 DEFAULT_MINI_SPLIT_SEED = 4242
 SplitName = Literal["train", "val", "test"]
 
@@ -49,6 +50,7 @@ def multi_wiki_qa(
     dataset_id: str | None = None,
     public_source_dataset_id: str = PUBLIC_SOURCE_DATASET_ID,
     max_answer_words: int = DEFAULT_MAX_ANSWER_WORDS,
+    max_gen_toks: int = DEFAULT_MAX_GEN_TOKS,
     mini_split_seed: int = DEFAULT_MINI_SPLIT_SEED,
     shuffle: bool = False,
     seed: int | None = None,
@@ -60,6 +62,8 @@ def multi_wiki_qa(
     split = _normalize_split_name(split)
     if max_answer_words < 1:
         raise ValueError("`max_answer_words` must be >= 1.")
+    if max_gen_toks < 1:
+        raise ValueError("`max_gen_toks` must be >= 1.")
     if mini_split_seed < 0:
         raise ValueError("`mini_split_seed` must be >= 0.")
 
@@ -90,7 +94,11 @@ def multi_wiki_qa(
             limit=limit,
         )
 
-    return Task(dataset=dataset, scorer=multi_wiki_qa_scorer())
+    return Task(
+        dataset=dataset,
+        solver=[generate(max_tokens=max_gen_toks)],
+        scorer=multi_wiki_qa_scorer(),
+    )
 
 
 def _normalize_split_name(split: str) -> SplitName:

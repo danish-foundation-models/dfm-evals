@@ -22,6 +22,7 @@ DEFAULT_SPLIT = "test"
 DEFAULT_SPLIT_SEED = 4242
 DEFAULT_TRAIN_SIZE = 128
 DEFAULT_VAL_SIZE = 64
+DEFAULT_MAX_GEN_TOKS = 128
 
 SOURCE_ZIP_URL = (
     "https://sprogtek-ressources.digst.govcloud.dk/1000%20danske%20talemaader"
@@ -43,6 +44,7 @@ def _talemaader_task(
     judge_model_role: str | None = "grader",
     source_zip_url: str = SOURCE_ZIP_URL,
     source_csv_name: str = SOURCE_CSV_NAME,
+    max_gen_toks: int = DEFAULT_MAX_GEN_TOKS,
     shuffle: bool = False,
     seed: int | None = None,
     limit: int | None = None,
@@ -57,6 +59,8 @@ def _talemaader_task(
         raise ValueError("`source_zip_url` must be a non-empty string.")
     if not source_csv_name.strip():
         raise ValueError("`source_csv_name` must be a non-empty string.")
+    if max_gen_toks < 1:
+        raise ValueError("`max_gen_toks` must be >= 1.")
 
     dataset = _memory_dataset(
         split=split,
@@ -68,7 +72,7 @@ def _talemaader_task(
     )
     return Task(
         dataset=dataset,
-        solver=[generate()],
+        solver=[generate(max_tokens=max_gen_toks)],
         scorer=model_graded_fact(
             template=JUDGE_TEMPLATE_DA,
             instructions=JUDGE_INSTRUCTIONS_DA,
@@ -86,6 +90,7 @@ def generative_talemaader(
     judge_model_role: str | None = "grader",
     source_zip_url: str = SOURCE_ZIP_URL,
     source_csv_name: str = SOURCE_CSV_NAME,
+    max_gen_toks: int = DEFAULT_MAX_GEN_TOKS,
     shuffle: bool = False,
     seed: int | None = None,
     limit: int | None = None,
@@ -96,6 +101,7 @@ def generative_talemaader(
         judge_model_role=judge_model_role,
         source_zip_url=source_zip_url,
         source_csv_name=source_csv_name,
+        max_gen_toks=max_gen_toks,
         shuffle=shuffle,
         seed=seed,
         limit=limit,

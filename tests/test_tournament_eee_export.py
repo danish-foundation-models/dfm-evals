@@ -232,10 +232,27 @@ def _records_by_model(paths: list[Path]) -> dict[str, dict[str, object]]:
     return records
 
 
+def _seed_existing_eee_record(output_dir: Path, *, benchmark: str, model_id: str) -> None:
+    developer, model_name = model_id.split("/", 1)
+    destination = output_dir / benchmark / developer / model_name / "seed.json"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(
+            {
+                "evaluation_id": f"{benchmark}/{model_id}/seed",
+                "model_info": {"id": model_id},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_export_tournament_results_writes_eee_records(tmp_path: Path) -> None:
     modules = _modules()
     config = _config(tmp_path)
     _seed_state(config)
+    _seed_existing_eee_record(tmp_path / "eee", benchmark="demo-benchmark", model_id="org/model-a")
+    _seed_existing_eee_record(tmp_path / "eee", benchmark="demo-benchmark", model_id="org/model-b")
 
     written = modules["eee_export_module"].export_tournament_results(
         target=config,
@@ -269,6 +286,23 @@ def test_export_tournament_results_writes_eee_records(tmp_path: Path) -> None:
         for result in records_by_model["org/model-b"]["evaluation_results"]
     }
     assert model_b_metrics["conservative"]["score_details"]["details"]["rank"] == "2"
+
+
+def test_export_tournament_results_skips_models_without_other_eee_records(
+    tmp_path: Path,
+) -> None:
+    modules = _modules()
+    config = _config(tmp_path)
+    _seed_state(config)
+    _seed_existing_eee_record(tmp_path / "eee", benchmark="demo-benchmark", model_id="org/model-a")
+
+    written = modules["eee_export_module"].export_tournament_results(
+        target=config,
+        output_dir=tmp_path / "eee",
+    )
+
+    records_by_model = _records_by_model(written)
+    assert set(records_by_model.keys()) == {"org/model-a"}
 
 
 def test_export_tournament_results_keeps_stable_evaluation_ids_across_reruns(
@@ -533,6 +567,7 @@ def test_extract_inspect_results_marks_default_preferred_metric_for_gec_dala() -
     results = eee_export_module._extract_inspect_results(
         eval_log=eval_log,
         task_name="gec_dala",
+        display_task_name=None,
         source_data={"dataset_name": "demo", "source_type": "other"},
         evaluation_timestamp="1234.0",
         generation_config=None,
@@ -573,6 +608,7 @@ def test_extract_inspect_results_prefers_explicit_metric_override_over_default()
     results = eee_export_module._extract_inspect_results(
         eval_log=eval_log,
         task_name="gec_dala",
+        display_task_name=None,
         source_data={"dataset_name": "demo", "source_type": "other"},
         evaluation_timestamp="1234.0",
         generation_config=None,
@@ -587,6 +623,81 @@ def test_extract_inspect_results_prefers_explicit_metric_override_over_default()
         == "true"
     )
     assert "additional_details" not in by_name["gec_dala/gleu/mean"]["metric_config"]
+
+
+def test_export_inspect_logs_labels_ruler_by_variant_and_length(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    modules = _modules()
+    eee_export_module = modules["eee_export_module"]
+    log_path = tmp_path / "inspect" / "ruler.eval"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text("{}", encoding="utf-8")
+
+    inspect_pkg = types.ModuleType("inspect_ai")
+    inspect_log_module = types.ModuleType("inspect_ai.log")
+
+    scorer = types.SimpleNamespace(
+        name="ruler_scorer",
+        params={},
+        metrics={"mean": types.SimpleNamespace(name="mean", value=1.0)},
+    )
+    sample = types.SimpleNamespace(
+        id="sample-1",
+        input="Question?",
+        target="Answer",
+        choices=None,
+        messages=None,
+        scores={},
+        output=types.SimpleNamespace(
+            completion="Answer",
+            model="google/gemma-3-4b-it",
+            usage=None,
+            choices=None,
+        ),
+        error=None,
+        metadata=None,
+    )
+    eval_log = types.SimpleNamespace(
+        eval=types.SimpleNamespace(
+            task="suite/ruler",
+            dataset={"name": "RULER-vt", "location": "generated:vt"},
+            created="2026-04-01T00:00:00+00:00",
+            model="google/gemma-3-4b-it",
+            packages={"inspect_ai": "0.1.0"},
+            model_generate_config={},
+            task_args={"variant": "vt", "max_seq_length": 8192},
+            config={},
+            model_args={},
+            model_base_url=None,
+        ),
+        stats=types.SimpleNamespace(started_at="2026-04-01T00:00:00+00:00"),
+        results=types.SimpleNamespace(scores=[scorer]),
+        samples=[sample],
+    )
+
+    inspect_log_module.list_eval_logs = lambda path: [types.SimpleNamespace(name=log_path.as_posix())]
+    inspect_log_module.read_eval_log = lambda path, header_only=False: eval_log
+    inspect_pkg.log = inspect_log_module
+
+    monkeypatch.setitem(sys.modules, "inspect_ai", inspect_pkg)
+    monkeypatch.setitem(sys.modules, "inspect_ai.log", inspect_log_module)
+
+    written = eee_export_module.export_inspect_logs(
+        log_path=log_path,
+        output_dir=tmp_path / "eee",
+    )
+    record = json.loads(written[0].read_text(encoding="utf-8"))
+    result = record["evaluation_results"][0]
+
+    assert written[0].parent.parent.parent.name == "RULER-vt_8k"
+    assert result["evaluation_name"] == "RULER-vt@8k/ruler_scorer/mean"
+    assert result["score_details"]["details"]["task"] == "RULER-vt@8k"
+    assert result["source_data"]["dataset_name"] == "RULER-vt@8k"
+    assert result["source_data"]["additional_details"]["base_dataset_name"] == "RULER-vt"
+    assert result["source_data"]["additional_details"]["max_seq_length"] == "8192"
+    assert result["source_data"]["additional_details"]["variant"] == "vt"
 
 
 def test_cli_eee_tournament_dispatches(tmp_path: Path, monkeypatch, capsys) -> None:

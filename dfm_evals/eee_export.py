@@ -486,6 +486,35 @@ def _write_record(
     return destination
 
 
+def _model_has_non_benchmark_records(
+    *,
+    output_dir: Path,
+    model_info: Mapping[str, Any],
+    exclude_benchmark: str | None = None,
+) -> bool:
+    model_id = str(model_info.get("id", "unknown"))
+    model_dev, model_name = _split_model_id(model_id)
+    excluded = (
+        _sanitize_path_component(exclude_benchmark) if exclude_benchmark is not None else None
+    )
+
+    if not output_dir.exists() or not output_dir.is_dir():
+        return False
+
+    for benchmark_dir in output_dir.iterdir():
+        if not benchmark_dir.is_dir():
+            continue
+        if excluded is not None and benchmark_dir.name == excluded:
+            continue
+        candidate_dir = benchmark_dir / model_dev / model_name
+        if not candidate_dir.is_dir():
+            continue
+        for path in candidate_dir.iterdir():
+            if path.is_file() and path.suffix == ".json":
+                return True
+    return False
+
+
 def _canonical_json(value: Any) -> str:
     return json.dumps(
         _compact(value),
@@ -944,6 +973,71 @@ def _extract_inspect_source_data(dataset: Any, task_name: str) -> tuple[str, dic
     return dataset_name, _compact(source_data)
 
 
+def _maybe_positive_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            parsed = int(text)
+        except ValueError:
+            return None
+        return parsed if parsed > 0 else None
+    return None
+
+
+def _format_context_length_label(token_count: int) -> str:
+    if token_count % (1024 * 1024) == 0:
+        return f"{token_count // (1024 * 1024)}m"
+    if token_count % 1024 == 0:
+        return f"{token_count // 1024}k"
+    return str(token_count)
+
+
+def _resolve_inspect_task_labels(
+    *,
+    task_name: str,
+    dataset_name: str,
+    source_data: Mapping[str, Any],
+    task_args: Mapping[str, Any] | None,
+) -> tuple[str, str, dict[str, Any]]:
+    benchmark_name = dataset_name or task_name or "unknown_dataset"
+    if task_name != "ruler":
+        return task_name, benchmark_name, dict(source_data)
+
+    args_map = _as_mapping(task_args)
+    variant = str(args_map.get("variant") or "").strip()
+    base_label = dataset_name.strip()
+    if not base_label:
+        base_label = f"RULER-{variant}" if variant else "RULER"
+
+    max_seq_length = _maybe_positive_int(args_map.get("max_seq_length"))
+    length_suffix = (
+        f"@{_format_context_length_label(max_seq_length)}"
+        if max_seq_length is not None
+        else ""
+    )
+    display_label = f"{base_label}{length_suffix}"
+
+    updated_source_data = dict(source_data)
+    updated_source_data["dataset_name"] = display_label
+
+    additional_details = _as_mapping(updated_source_data.get("additional_details"))
+    if display_label != base_label:
+        additional_details["base_dataset_name"] = base_label
+    if variant:
+        additional_details["variant"] = variant
+    if max_seq_length is not None:
+        additional_details["max_seq_length"] = str(max_seq_length)
+    updated_source_data["additional_details"] = additional_details or None
+
+    return display_label, display_label, _compact(updated_source_data)
+
+
 def _extract_inspect_inference_base_url(eval_spec: Any) -> str | None:
     model_base_url = getattr(eval_spec, "model_base_url", None)
     if isinstance(model_base_url, str) and model_base_url.strip():
@@ -1044,6 +1138,7 @@ def _extract_inspect_results(
     *,
     eval_log: Any,
     task_name: str,
+    display_task_name: str | None,
     source_data: Mapping[str, Any],
     evaluation_timestamp: str | None,
     generation_config: Mapping[str, Any] | None,
@@ -1056,6 +1151,7 @@ def _extract_inspect_results(
         task_name=task_name,
         task_args=task_args,
     )
+    effective_task_name = display_task_name or task_name
 
     evaluation_results: list[dict[str, Any]] = []
     for scorer in scorers:
@@ -1096,7 +1192,7 @@ def _extract_inspect_results(
             details = {
                 "scorer": scorer_name,
                 "metric": metric_name,
-                "task": task_name,
+                "task": effective_task_name,
                 "scorer_params": json.dumps(params, ensure_ascii=False, sort_keys=True, default=str),
             }
             score_details: dict[str, Any] = {
@@ -1136,7 +1232,7 @@ def _extract_inspect_results(
 
             result = _compact(
                 {
-                    "evaluation_name": f"{task_name}/{scorer_name}/{metric_name}",
+                    "evaluation_name": f"{effective_task_name}/{scorer_name}/{metric_name}",
                     "source_data": dict(source_data),
                     "evaluation_timestamp": evaluation_timestamp,
                     "metric_config": metric_config,
@@ -1221,7 +1317,13 @@ def export_inspect_logs(
         dataset_name, source_data = _extract_inspect_source_data(
             getattr(eval_spec, "dataset", None), task_name
         )
-        benchmark_name = dataset_name or task_name
+        task_args = _as_mapping(getattr(eval_spec, "task_args", None))
+        display_task_name, benchmark_name, source_data = _resolve_inspect_task_labels(
+            task_name=task_name,
+            dataset_name=dataset_name,
+            source_data=source_data,
+            task_args=task_args,
+        )
 
         eval_started_at = getattr(getattr(eval_log, "stats", None), "started_at", None)
         eval_created_at = getattr(eval_spec, "created", None)
@@ -1290,10 +1392,11 @@ def export_inspect_logs(
         evaluation_results = _extract_inspect_results(
             eval_log=eval_log,
             task_name=task_name,
+            display_task_name=display_task_name,
             source_data=source_data,
             evaluation_timestamp=evaluation_timestamp,
             generation_config=generation_config,
-            task_args=getattr(eval_spec, "task_args", None),
+            task_args=task_args,
         )
 
         if len(evaluation_results) == 0:
@@ -1877,6 +1980,12 @@ def export_tournament_results(
             getattr(standing, "model_name", None) or getattr(standing, "model_id"),
         )
         model_info = _parse_model_info(str(model_ref))
+        if not _model_has_non_benchmark_records(
+            output_dir=destination_root,
+            model_info=model_info,
+            exclude_benchmark=benchmark_name,
+        ):
+            continue
         evaluation_results = _extract_tournament_results(
             benchmark_name=benchmark_name,
             source_data=source_data,

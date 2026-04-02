@@ -23,10 +23,77 @@ def test_packaged_suites_include_openthoughts_tblite() -> None:
         "--message-limit",
         "100",
         "--limit",
-        "100",
+        "250",
+        "--sample-shuffle",
+        "4242",
         "--temperature",
         "0",
     ]
+
+
+def test_packaged_suites_include_ruler_smoke() -> None:
+    suites = cli._load_named_suites(cli.DEFAULT_SUITES_FILE)
+
+    suite = suites["ruler_smoke"]
+
+    assert [task.name for task in suite.tasks] == ["ruler", "ruler"]
+    assert suite.tasks[0].args == [
+        "-T",
+        "variant=niah_single_1",
+        "-T",
+        "num_samples=4",
+        "-T",
+        "max_seq_length=4096",
+        "-T",
+        "tokenizer_backend=hf",
+        "-T",
+        "tokenizer_model=google/gemma-3-4b-it",
+    ]
+    assert suite.tasks[1].args == [
+        "-T",
+        "variant=vt",
+        "-T",
+        "num_samples=4",
+        "-T",
+        "max_seq_length=4096",
+        "-T",
+        "tokenizer_backend=hf",
+        "-T",
+        "tokenizer_model=google/gemma-3-4b-it",
+    ]
+    assert suite.args == [
+        "--model",
+        "{{target_model}}",
+        "--limit",
+        "2",
+        "--sample-shuffle",
+        "4242",
+        "--temperature",
+        "0",
+    ]
+
+
+def test_packaged_fundamentals_include_short_ruler_lengths() -> None:
+    suites = cli._load_named_suites(cli.DEFAULT_SUITES_FILE)
+
+    suite = suites["fundamentals"]
+    ifeval_tasks = [task for task in suite.tasks if task.name in {"inspect_evals/ifeval", "ifeval-da"}]
+    ruler_tasks = [task for task in suite.tasks if task.name == "ruler"]
+
+    assert [(task.name, task.args) for task in ifeval_tasks] == [
+        ("inspect_evals/ifeval", ["--max-tokens", "3072"]),
+        ("ifeval-da", ["--max-tokens", "3072"]),
+    ]
+    assert len(ruler_tasks) == 4
+    assert sorted(task.args[5] for task in ruler_tasks) == [
+        "max_seq_length=32768",
+        "max_seq_length=32768",
+        "max_seq_length=8192",
+        "max_seq_length=8192",
+    ]
+    assert all("tokenizer_backend=auto" in task.args for task in ruler_tasks)
+    assert all("tokenizer_model={{target_model}}" in task.args for task in ruler_tasks)
+    assert all(any(arg.startswith("variant=") for arg in task.args) for task in ruler_tasks)
 
 
 def test_optional_registry_import_is_ignored_when_package_is_missing(
