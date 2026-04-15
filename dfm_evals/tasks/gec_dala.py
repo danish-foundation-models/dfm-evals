@@ -173,6 +173,9 @@ def record_to_sample(
         metadata={
             "corrupted": sentence,
             "target": target,
+            "corruption_type": record.get("corruption_type"),
+            "affected_token_1": record.get("affected_token_1"),
+            "affected_token_2": record.get("affected_token_2"),
         },
     )
 

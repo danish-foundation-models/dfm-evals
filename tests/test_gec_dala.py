@@ -21,6 +21,9 @@ def test_record_to_sample_maps_corrupted_and_original_fields() -> None:
             "id": "row-1",
             "corrupted": "Jeg går i skole igår.",
             "original": "Jeg gik i skole i går.",
+            "corruption_type": "verb_tense",
+            "affected_token_1": "går",
+            "affected_token_2": "gik",
         },
         prompt_template="Sætning: {{corrupted}}\nSvar:",
         input_field="corrupted",
@@ -30,6 +33,9 @@ def test_record_to_sample_maps_corrupted_and_original_fields() -> None:
     assert sample.id == "row-1"
     assert sample.input == "Sætning: Jeg går i skole igår.\nSvar:"
     assert sample.target == ["Jeg gik i skole i går."]
+    assert sample.metadata["corruption_type"] == "verb_tense"
+    assert sample.metadata["affected_token_1"] == "går"
+    assert sample.metadata["affected_token_2"] == "gik"
 
 
 def test_record_to_sample_requires_non_empty_target_field() -> None:
