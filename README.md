@@ -147,11 +147,21 @@ For LUMI-specific workflows, see [`lumi/README.md`](lumi/README.md).
 
 ### Add A Task
 
-1. Create a module under [`dfm_evals/tasks/`](dfm_evals/tasks/).
+1. Create a task entry module at one of these paths:
+   `dfm_evals/tasks/my_task.py`,
+   `dfm_evals/tasks/my_task/task.py`, or
+   `dfm_evals/tasks/my_task/my_task.py`.
 2. Define the task with `@task(name="your-task-name")`.
 3. Return an `inspect_ai.Task`.
-4. If the task should be part of the public local registry, add it to [`dfm_evals/_exports.py`](dfm_evals/_exports.py) in `REGISTRY_EXPORTS`.
-5. Add tests under [`tests/`](tests/).
+4. Add tests under [`tests/`](tests/).
+
+The registry now discovers task entry modules under
+[`dfm_evals/tasks/`](dfm_evals/tasks/) automatically, so you do not need to edit
+[`dfm_evals/_exports.py`](dfm_evals/_exports.py) just to make a new task
+available to `uv run evals tasks` or `uv run evals run ...`.
+
+Only touch [`dfm_evals/_exports.py`](dfm_evals/_exports.py) if you explicitly
+want a lazy Python export from `dfm_evals` or `dfm_evals.tasks`.
 
 Minimal shape:
 
@@ -167,6 +177,13 @@ def my_task() -> Task:
 After that, the task becomes available as `my-task` in `uv run evals tasks`
 because the package entry point already points to
 [`dfm_evals/_registry.py`](dfm_evals/_registry.py).
+
+If a new task needs packaged data files, update
+[`pyproject.toml`](pyproject.toml) so those files are included in built wheels.
+
+For the GitHub review setup that lets collaborators add new tasks while keeping
+core paths owned, see
+[`docs/github-review-guardrails.md`](docs/github-review-guardrails.md).
 
 ### Add A Scorer
 

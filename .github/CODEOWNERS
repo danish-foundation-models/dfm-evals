@@ -1,0 +1,63 @@
+# Replace or extend this owner with your GitHub user or team if preferred.
+# GitHub also accepts email addresses linked to a user account.
+
+/.github/ @rlrs
+/.gitignore @rlrs
+/README.md @rlrs
+/pyproject.toml @rlrs
+/uv.lock @rlrs
+
+/configs/ @rlrs
+/docs/ @rlrs
+/lumi/ @rlrs
+
+/dfm_evals/__init__.py @rlrs
+/dfm_evals/_exports.py @rlrs
+/dfm_evals/_registry.py @rlrs
+/dfm_evals/cli.py @rlrs
+/dfm_evals/eee_export.py @rlrs
+/dfm_evals/eval-sets.yaml @rlrs
+/dfm_evals/hf_eval_yaml.py @rlrs
+/dfm_evals/sandboxes/ @rlrs
+/dfm_evals/scorers/ @rlrs
+/dfm_evals/tournament/ @rlrs
+/dfm_evals/vllm_patches.py @rlrs
+/dfm_evals/vllm_serve.py @rlrs
+
+/dfm_evals/tasks/__init__.py @rlrs
+/dfm_evals/tasks/bfcl/ @rlrs
+/dfm_evals/tasks/dala.py @rlrs
+/dfm_evals/tasks/danish_citizen_tests.py @rlrs
+/dfm_evals/tasks/ifeval_da.py @rlrs
+/dfm_evals/tasks/multi_wiki_qa.py @rlrs
+/dfm_evals/tasks/piqa.py @rlrs
+/dfm_evals/tasks/piqa/ @rlrs
+/dfm_evals/tasks/ruler/ @rlrs
+/dfm_evals/tasks/talemaader/ @rlrs
+/dfm_evals/tasks/wmt24pp.py @rlrs
+
+/tests/test_artifact_root_defaults.py @rlrs
+/tests/test_bfcl.py @rlrs
+/tests/test_cli.py @rlrs
+/tests/test_dala.py @rlrs
+/tests/test_danish_citizen_tests.py @rlrs
+/tests/test_gleu.py @rlrs
+/tests/test_hf_eval_yaml.py @rlrs
+/tests/test_ifeval_da.py @rlrs
+/tests/test_multi_wiki_qa.py @rlrs
+/tests/test_piqa.py @rlrs
+/tests/test_registry.py @rlrs
+/tests/test_results_table.py @rlrs
+/tests/test_ruler.py @rlrs
+/tests/test_tournament_add_models.py @rlrs
+/tests/test_tournament_config.py @rlrs
+/tests/test_tournament_eee_export.py @rlrs
+/tests/test_tournament_launch.py @rlrs
+/tests/test_tournament_model_resolution.py @rlrs
+/tests/test_tournament_provenance.py @rlrs
+/tests/test_tournament_resolve.py @rlrs
+/tests/test_tournament_responses.py @rlrs
+/tests/test_tournament_side_swap.py @rlrs
+/tests/test_tournament_view.py @rlrs
+/tests/test_upcast_modelopt_checkpoint_to_bf16.py @rlrs
+/tests/test_vllm_patches.py @rlrs
