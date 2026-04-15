@@ -4,6 +4,7 @@ import dfm_evals.tasks.gec_dala as gec_dala_module
 from dfm_evals.tasks.gec_dala import (
     _load_hf_dataset,
     _normalize_split_name,
+    gec_dala_scorer,
     record_to_sample,
 )
 
@@ -20,6 +21,9 @@ def test_record_to_sample_maps_corrupted_and_original_fields() -> None:
             "id": "row-1",
             "corrupted": "Jeg går i skole igår.",
             "original": "Jeg gik i skole i går.",
+            "corruption_type": "verb_tense",
+            "affected_token_1": "går",
+            "affected_token_2": "gik",
         },
         prompt_template="Sætning: {{corrupted}}\nSvar:",
         input_field="corrupted",
@@ -29,6 +33,9 @@ def test_record_to_sample_maps_corrupted_and_original_fields() -> None:
     assert sample.id == "row-1"
     assert sample.input == "Sætning: Jeg går i skole igår.\nSvar:"
     assert sample.target == ["Jeg gik i skole i går."]
+    assert sample.metadata["corruption_type"] == "verb_tense"
+    assert sample.metadata["affected_token_1"] == "går"
+    assert sample.metadata["affected_token_2"] == "gik"
 
 
 def test_record_to_sample_requires_non_empty_target_field() -> None:
@@ -77,3 +84,11 @@ def test_load_hf_dataset_retries_without_name_on_missing_builder_config(
             "split": "test",
         },
     ]
+
+
+def test_gec_dala_scorer_registers_exact_match_metric() -> None:
+    registry_info = gec_dala_scorer().__registry_info__
+    metrics = registry_info.metadata["metrics"]
+
+    assert isinstance(metrics, dict)
+    assert "exact_match" in metrics
