@@ -13,6 +13,7 @@ from zipfile import ZipFile
 
 from inspect_ai import Task, task
 from inspect_ai.dataset import MemoryDataset, Sample
+from inspect_ai.model import get_model
 from inspect_ai.scorer import model_graded_fact
 from inspect_ai.solver import generate
 
@@ -35,13 +36,15 @@ PROMPT_TEMPLATE_DA = (
     'Talemåde: "{talemaade_udtryk}"\n\n'
     "Forklaring:"
 )
-TASK_NAME = "generative-talemaader"
+TASK_NAME = "generative_talemaader"
 DATASET_NAME = TASK_NAME
 
 def _talemaader_task(
     split: str = DEFAULT_SPLIT,
     judge_model: str | None = None,
     judge_model_role: str | None = "grader",
+    judge_base_url: str | None = None,
+    judge_api_key: str | None = None,
     source_zip_url: str = SOURCE_ZIP_URL,
     source_csv_name: str = SOURCE_CSV_NAME,
     max_gen_toks: int = DEFAULT_MAX_GEN_TOKS,
@@ -62,6 +65,11 @@ def _talemaader_task(
     if max_gen_toks < 1:
         raise ValueError("`max_gen_toks` must be >= 1.")
 
+    scorer_model = (
+        get_model(judge_model, base_url=judge_base_url, api_key=judge_api_key)
+        if judge_model is not None
+        else None
+    )
     dataset = _memory_dataset(
         split=split,
         source_zip_url=source_zip_url,
@@ -77,7 +85,7 @@ def _talemaader_task(
             template=JUDGE_TEMPLATE_DA,
             instructions=JUDGE_INSTRUCTIONS_DA,
             partial_credit=True,
-            model=judge_model,
+            model=scorer_model,
             model_role=judge_model_role,
         ),
     )
@@ -88,6 +96,8 @@ def generative_talemaader(
     split: str = DEFAULT_SPLIT,
     judge_model: str | None = None,
     judge_model_role: str | None = "grader",
+    judge_base_url: str | None = None,
+    judge_api_key: str | None = None,
     source_zip_url: str = SOURCE_ZIP_URL,
     source_csv_name: str = SOURCE_CSV_NAME,
     max_gen_toks: int = DEFAULT_MAX_GEN_TOKS,
@@ -99,6 +109,8 @@ def generative_talemaader(
         split=split,
         judge_model=judge_model,
         judge_model_role=judge_model_role,
+        judge_base_url=judge_base_url,
+        judge_api_key=judge_api_key,
         source_zip_url=source_zip_url,
         source_csv_name=source_csv_name,
         max_gen_toks=max_gen_toks,
